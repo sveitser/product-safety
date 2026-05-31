@@ -1,11 +1,11 @@
 import json
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
-FULL_DETAIL = {
+FULL_DETAIL: dict[str, Any] = {
     "id": 42,
     "reference": "SR/00042/26",
     "publicationDate": "2026-03-15T10:00:00Z",
@@ -80,7 +80,12 @@ def test_extract_alert_missing_english_falls_back() -> None:
     detail = dict(FULL_DETAIL)
     product = dict(detail["product"])
     product["versions"] = [
-        {"language": {"key": "DE"}, "name": "Badespielzeug", "description": "", "packageDescription": ""}
+        {
+            "language": {"key": "DE"},
+            "name": "Badespielzeug",
+            "description": "",
+            "packageDescription": "",
+        }
     ]
     detail["product"] = product
     row = extract_alert(detail)
@@ -266,8 +271,8 @@ async def test_download_image_error(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_run_full(tmp_db: Path, tmp_path: Path) -> None:
-    from scraper import ingest
     import backend.app.db as db_mod
+    from scraper import ingest
 
     page_resp = {
         "content": [{"id": 42}],
@@ -315,8 +320,8 @@ async def test_run_full(tmp_db: Path, tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_run_skips_missing_detail(tmp_db: Path, tmp_path: Path) -> None:
-    from scraper import ingest
     import backend.app.db as db_mod
+    from scraper import ingest
 
     page_resp = {
         "content": [{"id": 99}],
@@ -386,13 +391,27 @@ async def test_run_empty_content_stops(tmp_db: Path, tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_run_multi_page(tmp_db: Path, tmp_path: Path) -> None:
     """Cover the inter-page sleep (line after `page += 1`)."""
-    from scraper import ingest
     import backend.app.db as db_mod
+    from scraper import ingest
 
-    detail_a = {**FULL_DETAIL, "id": 1, "reference": "SR/00001/26",
-                "product": {**FULL_DETAIL["product"], "photos": [{"id": 9001, "fileName": "a.jpg", "mainPicture": True}]}}
-    detail_b = {**FULL_DETAIL, "id": 2, "reference": "SR/00002/26",
-                "product": {**FULL_DETAIL["product"], "photos": [{"id": 9002, "fileName": "b.jpg", "mainPicture": True}]}}
+    detail_a = {
+        **FULL_DETAIL,
+        "id": 1,
+        "reference": "SR/00001/26",
+        "product": {
+            **FULL_DETAIL["product"],
+            "photos": [{"id": 9001, "fileName": "a.jpg", "mainPicture": True}],
+        },
+    }
+    detail_b = {
+        **FULL_DETAIL,
+        "id": 2,
+        "reference": "SR/00002/26",
+        "product": {
+            **FULL_DETAIL["product"],
+            "photos": [{"id": 9002, "fileName": "b.jpg", "mainPicture": True}],
+        },
+    }
 
     def page_response(alert_id: int, total_pages: int, page_num: int) -> dict:
         return {

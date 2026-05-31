@@ -1,14 +1,14 @@
 import json
 from pathlib import Path
 
-import pytest
-
 
 def test_init_db_creates_tables(tmp_db: Path) -> None:
     import backend.app.db as db_mod
 
     conn = db_mod.get_conn()
-    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    tables = {
+        r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    }
     assert "alerts" in tables
     assert "photos" in tables
     conn.close()

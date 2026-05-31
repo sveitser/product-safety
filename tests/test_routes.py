@@ -1,12 +1,12 @@
 import json
 from pathlib import Path
+from typing import Any
 
-import pytest
 from fastapi.testclient import TestClient
 
 
-def _insert_alert(conn, **overrides: object) -> int:
-    alert = {
+def _insert_alert(conn: Any, **overrides: Any) -> int:
+    alert: dict[str, Any] = {
         "id": overrides.get("id", 1),
         "reference": overrides.get("reference", "SR/00001/26"),
         "publication_date": "2026-01-01T00:00:00Z",
@@ -157,9 +157,26 @@ def test_row_to_dict_empty_json_field(client: TestClient, tmp_db: Path) -> None:
          brands, model_types, risk_types, risk_description, legal_provision,
          measures, country_of_origin, sold_online, notification_type, raw_json)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (76, "SR/76/26", "2026-01-01", "2026-01-01", "Spain", "TOYS",
-         "No Fields Toy", "specific", None, None, None,
-         "risk", "law", None, "China", "NO", "ARTICLE_12", "{}"),
+        (
+            76,
+            "SR/76/26",
+            "2026-01-01",
+            "2026-01-01",
+            "Spain",
+            "TOYS",
+            "No Fields Toy",
+            "specific",
+            None,
+            None,
+            None,
+            "risk",
+            "law",
+            None,
+            "China",
+            "NO",
+            "ARTICLE_12",
+            "{}",
+        ),
     )
     conn.commit()
     conn.close()
@@ -181,9 +198,26 @@ def test_row_to_dict_invalid_json(client: TestClient, tmp_db: Path) -> None:
          brands, model_types, risk_types, risk_description, legal_provision,
          measures, country_of_origin, sold_online, notification_type, raw_json)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (77, "SR/77/26", "2026-01-01", "2026-01-01", "France", "TOYS",
-         "Broken JSON Toy", "specific", "NOT_JSON", "[]", "[]",
-         "risk", "law", "[]", "China", "NO", "ARTICLE_12", "{}"),
+        (
+            77,
+            "SR/77/26",
+            "2026-01-01",
+            "2026-01-01",
+            "France",
+            "TOYS",
+            "Broken JSON Toy",
+            "specific",
+            "NOT_JSON",
+            "[]",
+            "[]",
+            "risk",
+            "law",
+            "[]",
+            "China",
+            "NO",
+            "ARTICLE_12",
+            "{}",
+        ),
     )
     conn.commit()
     conn.close()

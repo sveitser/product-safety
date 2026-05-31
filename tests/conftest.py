@@ -1,3 +1,4 @@
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
@@ -11,17 +12,20 @@ def tmp_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("IMAGES_DIR", str(tmp_path / "images"))
 
     import importlib
+
     import backend.app.db as db_mod
+
     importlib.reload(db_mod)
     db_mod.init_db()
     return db
 
 
 @pytest.fixture
-def client(tmp_db: Path) -> TestClient:
+def client(tmp_db: Path) -> Generator[TestClient, None, None]:
     import importlib
-    import backend.app.routers.alerts as routes_mod
+
     import backend.app.main as main_mod
+    import backend.app.routers.alerts as routes_mod
 
     importlib.reload(routes_mod)
     importlib.reload(main_mod)

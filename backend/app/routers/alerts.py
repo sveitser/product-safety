@@ -1,5 +1,7 @@
 import json
+import sqlite3
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse
@@ -14,7 +16,7 @@ templates.env.filters["basename"] = lambda p: Path(p).name if p else ""
 PAGE_SIZE = 20
 
 
-def _row_to_dict(row) -> dict:
+def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     d = dict(row)
     for field in ("brands", "model_types", "risk_types", "measures"):
         if d.get(field):

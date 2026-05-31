@@ -13,9 +13,10 @@ Run:
 import asyncio
 import json
 import os
+import sqlite3
 import sys
-import time
 from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -38,7 +39,7 @@ HEADERS = {
 }
 
 
-def extract_alert(detail: dict) -> dict:
+def extract_alert(detail: dict[str, Any]) -> dict[str, Any]:
     """Flatten a full notification detail JSON into a DB row dict."""
     product = detail.get("product") or {}
     risk = detail.get("risk") or {}
@@ -96,7 +97,9 @@ def extract_alert(detail: dict) -> dict:
     }
 
 
-def upsert_alert(conn, alert_row: dict, photos: list[dict]) -> None:
+def upsert_alert(
+    conn: sqlite3.Connection, alert_row: dict[str, Any], photos: list[dict[str, Any]]
+) -> None:
     cols = list(alert_row.keys())
     placeholders = ", ".join("?" for _ in cols)
     updates = ", ".join(f"{c}=excluded.{c}" for c in cols if c != "id")
@@ -231,8 +234,10 @@ if __name__ == "__main__":
     parser.add_argument("--no-images", action="store_true", help="Skip image downloads")
     args = parser.parse_args()
 
-    asyncio.run(run(
-        category=args.category,
-        max_pages=args.max_pages,
-        download_images=not args.no_images,
-    ))
+    asyncio.run(
+        run(
+            category=args.category,
+            max_pages=args.max_pages,
+            download_images=not args.no_images,
+        )
+    )
