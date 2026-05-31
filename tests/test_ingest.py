@@ -477,3 +477,51 @@ async def test_run_stops_on_failed_page(tmp_db: Path, tmp_path: Path) -> None:
     ):
         mock_cls.return_value.__aenter__.return_value = mock_client
         await ingest.run(category="TOYS", max_pages=5, download_images=False)
+
+
+@pytest.mark.asyncio
+async def test_run_all_categories(tmp_db: Path, tmp_path: Path) -> None:
+    """category='ALL' omits productCategory filter and uses 'ALL categories' label."""
+    import backend.app.db as db_mod
+    from scraper import ingest
+
+    page_resp = {
+        "content": [{"id": 42}],
+        "totalPages": 1,
+        "totalElements": 1,
+        "number": 0,
+        "pageSize": 100,
+    }
+
+    mock_page_resp = MagicMock()
+    mock_page_resp.status_code = 200
+    mock_page_resp.json.return_value = page_resp
+
+    mock_detail_resp = MagicMock()
+    mock_detail_resp.status_code = 200
+    mock_detail_resp.json.return_value = FULL_DETAIL
+
+    async def mock_get(url, **kwargs):
+        return mock_detail_resp
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_page_resp
+    mock_client.get.side_effect = mock_get
+
+    with (
+        patch("scraper.ingest.IMAGES_DIR", tmp_path),
+        patch("scraper.ingest.REQUEST_DELAY", 0),
+        patch("httpx.AsyncClient") as mock_cls,
+    ):
+        mock_cls.return_value.__aenter__.return_value = mock_client
+        await ingest.run(category="ALL", max_pages=1, download_images=False)
+
+    # Verify no productCategory in the POST body
+    call_kwargs = mock_client.post.call_args
+    body = call_kwargs.kwargs.get("json") or call_kwargs.args[1]
+    assert "productCategory" not in body
+
+    conn = db_mod.get_conn()
+    row = conn.execute("SELECT * FROM alerts WHERE id=42").fetchone()
+    assert row is not None
+    conn.close()

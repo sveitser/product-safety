@@ -1,5 +1,5 @@
 """
-Safety Gate scraper — fetches toy alerts from the EU Safety Gate public API.
+Safety Gate scraper — fetches alerts from the EU Safety Gate public API.
 
 Endpoints used:
   POST /public/api/notification/mostRecent/  → paginated recent alerts
@@ -7,7 +7,10 @@ Endpoints used:
   GET  /public/api/notification/image/{photoId}  → JPEG image
 
 Run:
-  python scraper/ingest.py [--category TOYS] [--max-pages 999]
+  python scraper/ingest.py                     # fetch TOYS category (default)
+  python scraper/ingest.py --all-categories    # fetch all product categories
+  python scraper/ingest.py --category TOYS     # fetch a specific category
+  python scraper/ingest.py --max-pages 2       # limit pages fetched
 """
 
 import asyncio
@@ -162,12 +165,15 @@ async def run(category: str = "TOYS", max_pages: int = 999, download_images: boo
     init_db()
     conn = get_conn()
 
+    cat_label = "ALL categories" if category == "ALL" else f"category={category}"
+    print(f"Starting ingestion ({cat_label}, max_pages={max_pages})")
+
     async with httpx.AsyncClient(headers=HEADERS, timeout=30.0) as client:
         page = 0
         total_processed = 0
 
         while page < max_pages:
-            print(f"Fetching page {page} (category={category})…")
+            print(f"Fetching page {page} ({cat_label})…")
             data = await fetch_page(client, page, category)
 
             if data is None:
@@ -179,7 +185,7 @@ async def run(category: str = "TOYS", max_pages: int = 999, download_images: boo
             total_elements = data.get("totalElements", 0)
 
             if page == 0:
-                print(f"  Total alerts available: {total_elements} ({total_pages} pages)")
+                print(f"  Total alerts available: {total_elements} across {total_pages} pages")
 
             if not content:
                 break
@@ -213,12 +219,13 @@ async def run(category: str = "TOYS", max_pages: int = 999, download_images: boo
                 total_processed += 1
                 ref = detail.get("reference", alert_id)
                 name = alert_row.get("product_name") or alert_row.get("product_name_specific", "")
-                print(f"  [{total_processed}] {ref} — {name}")
+                print(f"  [{total_processed}/{total_elements}] {ref} — {name}")
 
             page += 1
             if page >= total_pages:
                 break
 
+            print(f"  Fetched page {page - 1}, total so far: {total_processed} alerts")
             await asyncio.sleep(REQUEST_DELAY)
 
     conn.close()
@@ -229,14 +236,25 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Ingest Safety Gate alerts")
-    parser.add_argument("--category", default="TOYS", help="Product category (default: TOYS)")
+    parser.add_argument(
+        "--category",
+        default="TOYS",
+        help="Product category filter (default: TOYS). Use ALL to fetch all categories.",
+    )
+    parser.add_argument(
+        "--all-categories",
+        action="store_true",
+        help="Fetch all product categories (equivalent to --category ALL)",
+    )
     parser.add_argument("--max-pages", type=int, default=999, help="Max pages to fetch")
     parser.add_argument("--no-images", action="store_true", help="Skip image downloads")
     args = parser.parse_args()
 
+    category = "ALL" if args.all_categories else args.category
+
     asyncio.run(
         run(
-            category=args.category,
+            category=category,
             max_pages=args.max_pages,
             download_images=not args.no_images,
         )
