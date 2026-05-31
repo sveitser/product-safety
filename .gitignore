@@ -2,4 +2,8 @@
 data/
 __pycache__/
 *.pyc
+*.pyo
 .direnv/
+.coverage
+.pytest_cache/
+CLAUDE.md
