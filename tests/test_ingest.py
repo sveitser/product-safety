@@ -525,3 +525,367 @@ async def test_run_all_categories(tmp_db: Path, tmp_path: Path) -> None:
     row = conn.execute("SELECT * FROM alerts WHERE id=42").fetchone()
     assert row is not None
     conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Tests for historical ingestion via webreport/all
+# ---------------------------------------------------------------------------
+
+WEBREPORT_PAGE: dict = {
+    "content": [
+        {
+            "id": 9001,
+            "code": "Report-2024-01",
+            "publicationDate": "2024-01-10T00:00:00.000+00:00",
+            "notifications": [
+                {"id": 42, "reference": "A12/00042/24"},
+            ],
+        }
+    ],
+    "totalElements": 1,
+    "totalPages": 1,
+    "size": 10,
+    "number": 0,
+    "empty": False,
+}
+
+
+@pytest.mark.asyncio
+async def test_fetch_webreport_years_success() -> None:
+    from scraper.ingest import fetch_webreport_years
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = [2026, 2025, 2024]
+
+    mock_client = AsyncMock()
+    mock_client.get.return_value = mock_resp
+
+    result = await fetch_webreport_years(mock_client)
+    assert result == [2026, 2025, 2024]
+
+
+@pytest.mark.asyncio
+async def test_fetch_webreport_years_error() -> None:
+    from scraper.ingest import fetch_webreport_years
+
+    mock_client = AsyncMock()
+    mock_client.get.side_effect = Exception("timeout")
+
+    result = await fetch_webreport_years(mock_client)
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_webreport_years_non_200() -> None:
+    from scraper.ingest import fetch_webreport_years
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 460
+
+    mock_client = AsyncMock()
+    mock_client.get.return_value = mock_resp
+
+    result = await fetch_webreport_years(mock_client)
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_webreport_page_success() -> None:
+    from scraper.ingest import fetch_webreport_page
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = WEBREPORT_PAGE
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_resp
+
+    result = await fetch_webreport_page(mock_client, 2024, 0)
+    assert result is not None
+    assert result["totalPages"] == 1
+    mock_client.post.assert_called_once()
+    call_body = mock_client.post.call_args.kwargs["json"]
+    assert call_body["year"] == 2024
+    assert call_body["page"] == "0"
+
+
+@pytest.mark.asyncio
+async def test_fetch_webreport_page_error() -> None:
+    from scraper.ingest import fetch_webreport_page
+
+    mock_client = AsyncMock()
+    mock_client.post.side_effect = Exception("network error")
+
+    result = await fetch_webreport_page(mock_client, 2024, 0)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_webreport_page_non_200() -> None:
+    from scraper.ingest import fetch_webreport_page
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 500
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_resp
+
+    result = await fetch_webreport_page(mock_client, 2024, 0)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_run_historical_basic(tmp_db: Path, tmp_path: Path) -> None:
+    """run_historical fetches webreport pages then fetches detail for each ID."""
+    import backend.app.db as db_mod
+    from scraper import ingest
+
+    mock_webreport_resp = MagicMock()
+    mock_webreport_resp.status_code = 200
+    mock_webreport_resp.json.return_value = WEBREPORT_PAGE
+
+    mock_detail_resp = MagicMock()
+    mock_detail_resp.status_code = 200
+    mock_detail_resp.json.return_value = FULL_DETAIL
+
+    async def mock_post(url, **kwargs):
+        return mock_webreport_resp
+
+    async def mock_get(url, **kwargs):
+        return mock_detail_resp
+
+    mock_client = AsyncMock()
+    mock_client.post.side_effect = mock_post
+    mock_client.get.side_effect = mock_get
+
+    with (
+        patch("scraper.ingest.IMAGES_DIR", tmp_path),
+        patch("scraper.ingest.REQUEST_DELAY", 0),
+        patch("httpx.AsyncClient") as mock_cls,
+    ):
+        mock_cls.return_value.__aenter__.return_value = mock_client
+        await ingest.run_historical(years=[2024], download_images=False)
+
+    conn = db_mod.get_conn()
+    row = conn.execute("SELECT * FROM alerts WHERE id=42").fetchone()
+    assert row is not None
+    assert row["product_name"] == "Bath Duck"
+    conn.close()
+
+
+@pytest.mark.asyncio
+async def test_run_historical_deduplicates_ids(tmp_db: Path, tmp_path: Path) -> None:
+    """Notification IDs that appear in multiple reports are only fetched once."""
+    import backend.app.db as db_mod
+    from scraper import ingest
+
+    # Two reports, both referencing the same notification ID
+    wr_page = {
+        "content": [
+            {"id": 9001, "code": "Report-2024-01", "notifications": [{"id": 42}]},
+            {"id": 9002, "code": "Report-2024-02", "notifications": [{"id": 42}]},
+        ],
+        "totalElements": 2,
+        "totalPages": 1,
+        "size": 10,
+        "number": 0,
+    }
+
+    mock_webreport_resp = MagicMock()
+    mock_webreport_resp.status_code = 200
+    mock_webreport_resp.json.return_value = wr_page
+
+    mock_detail_resp = MagicMock()
+    mock_detail_resp.status_code = 200
+    mock_detail_resp.json.return_value = FULL_DETAIL
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_webreport_resp
+    mock_client.get.return_value = mock_detail_resp
+
+    with (
+        patch("scraper.ingest.IMAGES_DIR", tmp_path),
+        patch("scraper.ingest.REQUEST_DELAY", 0),
+        patch("httpx.AsyncClient") as mock_cls,
+    ):
+        mock_cls.return_value.__aenter__.return_value = mock_client
+        await ingest.run_historical(years=[2024], download_images=False)
+
+    # Detail should be fetched exactly once despite the ID appearing twice
+    get_calls = [c for c in mock_client.get.call_args_list if "image" not in str(c)]
+    assert len(get_calls) == 1
+
+    conn = db_mod.get_conn()
+    count = conn.execute("SELECT COUNT(*) FROM alerts").fetchone()[0]
+    assert count == 1
+    conn.close()
+
+
+@pytest.mark.asyncio
+async def test_run_historical_skips_missing_detail(tmp_db: Path, tmp_path: Path) -> None:
+    from scraper import ingest
+
+    mock_webreport_resp = MagicMock()
+    mock_webreport_resp.status_code = 200
+    mock_webreport_resp.json.return_value = WEBREPORT_PAGE
+
+    mock_detail_resp = MagicMock()
+    mock_detail_resp.status_code = 404
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_webreport_resp
+    mock_client.get.return_value = mock_detail_resp
+
+    with (
+        patch("scraper.ingest.IMAGES_DIR", tmp_path),
+        patch("scraper.ingest.REQUEST_DELAY", 0),
+        patch("httpx.AsyncClient") as mock_cls,
+    ):
+        mock_cls.return_value.__aenter__.return_value = mock_client
+        await ingest.run_historical(years=[2024], download_images=False)
+
+    # Alert with 404 detail should not be inserted
+    import backend.app.db as db_mod
+
+    conn = db_mod.get_conn()
+    count = conn.execute("SELECT COUNT(*) FROM alerts").fetchone()[0]
+    assert count == 0
+    conn.close()
+
+
+@pytest.mark.asyncio
+async def test_run_historical_failed_webreport_page(tmp_db: Path, tmp_path: Path) -> None:
+    """A failed webreport page fetch is skipped gracefully."""
+    from scraper import ingest
+
+    mock_client = AsyncMock()
+    mock_client.post.side_effect = Exception("network failure")
+
+    with (
+        patch("scraper.ingest.IMAGES_DIR", tmp_path),
+        patch("scraper.ingest.REQUEST_DELAY", 0),
+        patch("httpx.AsyncClient") as mock_cls,
+    ):
+        mock_cls.return_value.__aenter__.return_value = mock_client
+        await ingest.run_historical(years=[2024], download_images=False)
+
+    import backend.app.db as db_mod
+
+    conn = db_mod.get_conn()
+    count = conn.execute("SELECT COUNT(*) FROM alerts").fetchone()[0]
+    assert count == 0
+    conn.close()
+
+
+@pytest.mark.asyncio
+async def test_run_historical_no_years(tmp_db: Path, tmp_path: Path) -> None:
+    """When year listing fails, run_historical exits without crashing."""
+    from scraper import ingest
+
+    mock_years_resp = MagicMock()
+    mock_years_resp.status_code = 460  # non-200
+
+    mock_client = AsyncMock()
+    mock_client.get.return_value = mock_years_resp
+
+    with (
+        patch("scraper.ingest.IMAGES_DIR", tmp_path),
+        patch("scraper.ingest.REQUEST_DELAY", 0),
+        patch("httpx.AsyncClient") as mock_cls,
+    ):
+        mock_cls.return_value.__aenter__.return_value = mock_client
+        # years=None triggers the automatic year listing
+        await ingest.run_historical(years=None, download_images=False)
+
+    import backend.app.db as db_mod
+
+    conn = db_mod.get_conn()
+    count = conn.execute("SELECT COUNT(*) FROM alerts").fetchone()[0]
+    assert count == 0
+    conn.close()
+
+
+@pytest.mark.asyncio
+async def test_run_historical_with_images(tmp_db: Path, tmp_path: Path) -> None:
+    """run_historical downloads images when download_images=True."""
+    import backend.app.db as db_mod
+    from scraper import ingest
+
+    mock_webreport_resp = MagicMock()
+    mock_webreport_resp.status_code = 200
+    mock_webreport_resp.json.return_value = WEBREPORT_PAGE
+
+    mock_detail_resp = MagicMock()
+    mock_detail_resp.status_code = 200
+    mock_detail_resp.json.return_value = FULL_DETAIL
+
+    mock_img_resp = MagicMock()
+    mock_img_resp.status_code = 200
+    mock_img_resp.content = b"IMG"
+
+    async def mock_get(url, **kwargs):
+        if "image" in url:
+            return mock_img_resp
+        return mock_detail_resp
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_webreport_resp
+    mock_client.get.side_effect = mock_get
+
+    with (
+        patch("scraper.ingest.IMAGES_DIR", tmp_path),
+        patch("scraper.ingest.REQUEST_DELAY", 0),
+        patch("httpx.AsyncClient") as mock_cls,
+    ):
+        mock_cls.return_value.__aenter__.return_value = mock_client
+        await ingest.run_historical(years=[2024], download_images=True)
+
+    conn = db_mod.get_conn()
+    row = conn.execute("SELECT * FROM alerts WHERE id=42").fetchone()
+    assert row is not None
+    # Image file should exist
+    img_files = list(tmp_path.glob("9001_*.jpg"))
+    assert len(img_files) == 1
+    conn.close()
+
+
+@pytest.mark.asyncio
+async def test_run_historical_auto_years(tmp_db: Path, tmp_path: Path) -> None:
+    """When years=None, historical run fetches year list then processes each year."""
+    import backend.app.db as db_mod
+    from scraper import ingest
+
+    mock_years_resp = MagicMock()
+    mock_years_resp.status_code = 200
+    mock_years_resp.json.return_value = [2024]
+
+    mock_webreport_resp = MagicMock()
+    mock_webreport_resp.status_code = 200
+    mock_webreport_resp.json.return_value = WEBREPORT_PAGE
+
+    mock_detail_resp = MagicMock()
+    mock_detail_resp.status_code = 200
+    mock_detail_resp.json.return_value = FULL_DETAIL
+
+    async def mock_get(url, **kwargs):
+        if "years" in url:
+            return mock_years_resp
+        return mock_detail_resp
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_webreport_resp
+    mock_client.get.side_effect = mock_get
+
+    with (
+        patch("scraper.ingest.IMAGES_DIR", tmp_path),
+        patch("scraper.ingest.REQUEST_DELAY", 0),
+        patch("httpx.AsyncClient") as mock_cls,
+    ):
+        mock_cls.return_value.__aenter__.return_value = mock_client
+        await ingest.run_historical(years=None, download_images=False)
+
+    conn = db_mod.get_conn()
+    row = conn.execute("SELECT * FROM alerts WHERE id=42").fetchone()
+    assert row is not None
+    conn.close()

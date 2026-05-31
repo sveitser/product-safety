@@ -2,7 +2,9 @@
 Safety Gate scraper — fetches alerts from the EU Safety Gate public API.
 
 Endpoints used:
-  POST /public/api/notification/mostRecent/  → paginated recent alerts
+  POST /public/api/notification/mostRecent/  → paginated recent alerts (last ~300)
+  POST /public/api/webreport/all             → weekly web reports with notification IDs (historical)
+  GET  /public/api/webreport/years/all       → list of years with published weekly reports
   GET  /public/api/notification/{id}?language=en → full detail
   GET  /public/api/notification/image/{photoId}  → JPEG image
 
@@ -11,6 +13,8 @@ Run:
   python scraper/ingest.py --all-categories    # fetch all product categories
   python scraper/ingest.py --category TOYS     # fetch a specific category
   python scraper/ingest.py --max-pages 2       # limit pages fetched
+  python scraper/ingest.py --historical        # fetch all historical alerts via webreport/all
+  python scraper/ingest.py --historical --year 2024  # historical for a specific year only
 """
 
 import asyncio
@@ -160,6 +164,134 @@ async def fetch_page(client: httpx.AsyncClient, page: int, category: str) -> dic
     return None
 
 
+async def fetch_webreport_years(client: httpx.AsyncClient) -> list[int]:
+    """Return list of years that have published weekly web reports."""
+    try:
+        resp = await client.get(f"{BASE_URL}/public/api/webreport/years/all")
+        if resp.status_code == 200:
+            return resp.json()
+    except Exception as e:
+        print(f"  [warn] webreport years: {e}")
+    return []
+
+
+async def fetch_webreport_page(client: httpx.AsyncClient, year: int, page: int) -> dict | None:
+    """Fetch one page of weekly web reports for a given year.
+
+    Each report contains a list of notification IDs (all other fields are null
+    in this response; full detail must be fetched per-notification).
+    """
+    body: dict = {"year": year, "month": None, "language": "en", "page": str(page)}
+    try:
+        resp = await client.post(f"{BASE_URL}/public/api/webreport/all", json=body)
+        if resp.status_code == 200:
+            return resp.json()
+    except Exception as e:
+        print(f"  [warn] webreport year={year} page={page}: {e}")
+    return None
+
+
+async def run_historical(
+    years: list[int] | None = None,
+    download_images: bool = True,
+) -> None:
+    """Ingest historical alerts via the weekly web report index.
+
+    Iterates over all published years (or the provided subset), collects every
+    notification ID from the weekly reports, then fetches full detail for each
+    one and upserts it into the database.  Duplicate IDs within a run are
+    skipped.  Rate-limited to one request per second.
+    """
+    IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    init_db()
+    conn = get_conn()
+
+    async with httpx.AsyncClient(headers=HEADERS, timeout=30.0) as client:
+        # Resolve which years to process
+        if years is None:
+            available = await fetch_webreport_years(client)
+            await asyncio.sleep(REQUEST_DELAY)
+            if not available:
+                print("Could not fetch list of years — aborting.")
+                conn.close()
+                return
+            years = sorted(available)
+
+        print(f"Historical ingestion: processing years {years}")
+
+        total_processed = 0
+        seen_ids: set[int] = set()
+
+        for year in years:
+            print(f"\n=== Year {year} ===")
+            page = 0
+            year_ids: list[int] = []
+
+            # Collect all notification IDs for this year
+            while True:
+                data = await fetch_webreport_page(client, year, page)
+                await asyncio.sleep(REQUEST_DELAY)
+
+                if data is None:
+                    print(
+                        f"  [warn] failed to fetch webreport year={year} page={page}, skipping rest of year"
+                    )
+                    break
+
+                total_pages = data.get("totalPages", 1)
+                content = data.get("content") or []
+
+                for report in content:
+                    for notif in report.get("notifications") or []:
+                        nid = notif.get("id")
+                        if nid and nid not in seen_ids:
+                            year_ids.append(nid)
+
+                page += 1
+                if page >= total_pages:
+                    break
+
+            print(f"  {len(year_ids)} notification IDs collected for {year}")
+
+            # Fetch full detail for each notification
+            for i, alert_id in enumerate(year_ids, 1):
+                if alert_id in seen_ids:
+                    continue
+                seen_ids.add(alert_id)
+
+                await asyncio.sleep(REQUEST_DELAY)
+                detail = await fetch_detail(client, alert_id)
+                if detail is None:
+                    print(f"  [{i}/{len(year_ids)}] Skipping {alert_id} — no detail")
+                    continue
+
+                photos = (detail.get("product") or {}).get("photos") or []
+                alert_row = extract_alert(detail)
+
+                with conn:
+                    upsert_alert(conn, alert_row, photos)
+
+                if download_images:
+                    for photo in photos:
+                        await asyncio.sleep(0.5)
+                        local_path = await download_image(client, photo["id"], photo["fileName"])
+                        if local_path:
+                            with conn:
+                                conn.execute(
+                                    "UPDATE photos SET local_path=? WHERE id=?",
+                                    (str(local_path), photo["id"]),
+                                )
+
+                total_processed += 1
+                ref = detail.get("reference", alert_id)
+                name = alert_row.get("product_name") or alert_row.get("product_name_specific", "")
+                cat = alert_row.get("product_category", "")
+                print(f"  [{i}/{len(year_ids)}] {ref} ({cat}) — {name}")
+
+    conn.close()
+    print(f"\nDone. Processed {total_processed} historical alerts.")
+
+
 async def run(category: str = "TOYS", max_pages: int = 999, download_images: bool = True) -> None:
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     init_db()
@@ -248,14 +380,38 @@ if __name__ == "__main__":
     )
     parser.add_argument("--max-pages", type=int, default=999, help="Max pages to fetch")
     parser.add_argument("--no-images", action="store_true", help="Skip image downloads")
+    parser.add_argument(
+        "--historical",
+        action="store_true",
+        help=(
+            "Fetch historical alerts via the weekly web report index "
+            "(POST /public/api/webreport/all). "
+            "Covers all years with published reports, going back further "
+            "than --mostRecent which only returns ~300 recent alerts."
+        ),
+    )
+    parser.add_argument(
+        "--year",
+        type=int,
+        default=None,
+        help="When used with --historical: restrict to a single year (e.g. --year 2024).",
+    )
     args = parser.parse_args()
 
-    category = "ALL" if args.all_categories else args.category
-
-    asyncio.run(
-        run(
-            category=category,
-            max_pages=args.max_pages,
-            download_images=not args.no_images,
+    if args.historical:
+        years = [args.year] if args.year else None
+        asyncio.run(
+            run_historical(
+                years=years,
+                download_images=not args.no_images,
+            )
         )
-    )
+    else:
+        category = "ALL" if args.all_categories else args.category
+        asyncio.run(
+            run(
+                category=category,
+                max_pages=args.max_pages,
+                download_images=not args.no_images,
+            )
+        )
