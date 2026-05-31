@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-lint-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-lint-
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Check style (ruff format)
+        run: ruff format --check .
+
+      - name: Lint (ruff check)
+        run: ruff check .
+
+  typecheck:
+    name: Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-typecheck-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-typecheck-
+
+      - name: Install dependencies
+        run: |
+          pip install \
+            fastapi \
+            uvicorn \
+            jinja2 \
+            python-multipart \
+            aiosqlite \
+            httpx \
+            pydantic \
+            pydantic-settings \
+            rich \
+            typer \
+            alembic \
+            sqlalchemy \
+            ty
+
+      - name: Type check (ty)
+        run: ty check
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-test-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-test-
+
+      - name: Install dependencies
+        run: |
+          pip install \
+            fastapi \
+            uvicorn \
+            jinja2 \
+            python-multipart \
+            aiosqlite \
+            httpx \
+            pydantic \
+            pydantic-settings \
+            rich \
+            typer \
+            alembic \
+            sqlalchemy \
+            pytest \
+            pytest-cov \
+            pytest-asyncio \
+            starlette
+
+      - name: Run tests with coverage
+        run: pytest --cov=backend --cov=scraper --cov-report=term-missing
