@@ -1,0 +1,58 @@
+<div class="results-meta">{{ total }} alert{% if total != 1 %}s{% endif %} found</div>
+<div id="loading">Loading…</div>
+<div class="alert-grid">
+  {% for alert in alerts %}
+  <div class="alert-card">
+    <a href="/alert/{{ alert.id }}">
+      {% if alert.main_photo and alert.main_photo.local_path %}
+      <img src="/images/{{ alert.main_photo.local_path | basename }}"
+           alt="{{ alert.product_name or alert.product_name_specific }}"
+           loading="lazy">
+      {% else %}
+      <div class="no-img">No image</div>
+      {% endif %}
+      <div class="card-body">
+        <div class="ref">{{ alert.reference }} · {{ alert.publication_date[:10] if alert.publication_date }}</div>
+        <div class="product-name">{{ alert.product_name or alert.product_name_specific or '(unnamed)' }}</div>
+        {% if alert.product_name_specific and alert.product_name_specific != alert.product_name %}
+        <div style="font-size:.85rem;color:#555">{{ alert.product_name_specific }}</div>
+        {% endif %}
+        {% if alert.brands %}
+        <div style="font-size:.8rem;">{{ alert.brands | join(', ') }}</div>
+        {% endif %}
+        <span class="category-badge">{{ alert.product_category | replace('_', ' ') | title }}</span>
+        {% if alert.risk_types %}
+        <div class="risk-list">⚠ {{ alert.risk_types | join(' · ') | replace('_', ' ') | title }}</div>
+        {% endif %}
+        <div class="country">{{ alert.country }}{% if alert.country_of_origin %} · Origin: {{ alert.country_of_origin }}{% endif %}</div>
+      </div>
+    </a>
+  </div>
+  {% else %}
+  <p style="color:#888;grid-column:1/-1">No alerts found.</p>
+  {% endfor %}
+</div>
+
+{% if total_pages > 1 %}
+<div class="pagination">
+  {% if page > 1 %}
+  <a href="?q={{ q }}&category={{ category }}&page={{ page - 1 }}"
+     hx-get="/?q={{ q }}&category={{ category }}&page={{ page - 1 }}"
+     hx-target="#results" hx-push-url="true">‹ Prev</a>
+  {% endif %}
+  {% for p in range([1, page-2]|max, [total_pages+1, page+3]|min) %}
+  {% if p == page %}
+  <span class="current">{{ p }}</span>
+  {% else %}
+  <a href="?q={{ q }}&category={{ category }}&page={{ p }}"
+     hx-get="/?q={{ q }}&category={{ category }}&page={{ p }}"
+     hx-target="#results" hx-push-url="true">{{ p }}</a>
+  {% endif %}
+  {% endfor %}
+  {% if page < total_pages %}
+  <a href="?q={{ q }}&category={{ category }}&page={{ page + 1 }}"
+     hx-get="/?q={{ q }}&category={{ category }}&page={{ page + 1 }}"
+     hx-target="#results" hx-push-url="true">Next ›</a>
+  {% endif %}
+</div>
+{% endif %}

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Product Safety DB{% endblock %}</title>
+  <script src="https://unpkg.com/htmx.org@1.9.12" crossorigin="anonymous"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 0; background: #f5f5f5; color: #222; }
+    header { background: #1a1a2e; color: #fff; padding: 1rem 2rem; display: flex; align-items: center; gap: 1rem; }
+    header a { color: #fff; text-decoration: none; font-size: 1.2rem; font-weight: bold; }
+    main { max-width: 1200px; margin: 2rem auto; padding: 0 1rem; }
+    .search-bar { display: flex; gap: .5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+    .search-bar input, .search-bar select { padding: .5rem .75rem; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem; }
+    .search-bar input[type=text] { flex: 1; min-width: 200px; }
+    .search-bar button { padding: .5rem 1.25rem; background: #1a1a2e; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; }
+    .search-bar button:hover { background: #2d2d5e; }
+    .results-meta { color: #666; font-size: .9rem; margin-bottom: 1rem; }
+    .alert-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.25rem; }
+    .alert-card { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.1); overflow: hidden; display: flex; flex-direction: column; }
+    .alert-card img { width: 100%; height: 180px; object-fit: contain; background: #f0f0f0; }
+    .alert-card .no-img { width: 100%; height: 180px; background: #e8e8e8; display: flex; align-items: center; justify-content: center; color: #aaa; font-size: .85rem; }
+    .alert-card .card-body { padding: .75rem 1rem 1rem; flex: 1; display: flex; flex-direction: column; gap: .3rem; }
+    .alert-card .ref { font-size: .75rem; color: #888; }
+    .alert-card .product-name { font-weight: 600; font-size: .95rem; }
+    .alert-card .category-badge { display: inline-block; background: #e3f2fd; color: #1565c0; padding: .15rem .5rem; border-radius: 12px; font-size: .75rem; }
+    .alert-card .risk-list { font-size: .8rem; color: #c62828; margin-top: .25rem; }
+    .alert-card .country { font-size: .8rem; color: #555; }
+    .alert-card a { text-decoration: none; color: inherit; }
+    .alert-card a:hover .product-name { text-decoration: underline; }
+    .pagination { display: flex; gap: .5rem; justify-content: center; margin-top: 2rem; flex-wrap: wrap; }
+    .pagination a, .pagination span { padding: .4rem .75rem; border: 1px solid #ccc; border-radius: 4px; text-decoration: none; color: #333; }
+    .pagination a:hover { background: #e8e8e8; }
+    .pagination .current { background: #1a1a2e; color: #fff; border-color: #1a1a2e; }
+    #loading { display: none; color: #888; padding: 1rem; text-align: center; }
+    .htmx-request #loading { display: block; }
+    .htmx-request .alert-grid { opacity: .5; }
+  </style>
+</head>
+<body>
+<header>
+  <a href="/">Product Safety DB</a>
+  <span style="font-size:.85rem;opacity:.7">EU Safety Gate alerts</span>
+</header>
+<main>
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

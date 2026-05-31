@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Product Safety DB{% endblock %}
+{% block content %}
+<form class="search-bar"
+      hx-get="/"
+      hx-target="#results"
+      hx-push-url="true"
+      hx-indicator="#loading">
+  <input type="text" name="q" value="{{ q }}" placeholder="Search products, brands, risks…">
+  <select name="category">
+    <option value="">All categories</option>
+    {% for cat in categories %}
+    <option value="{{ cat }}" {% if cat == category %}selected{% endif %}>{{ cat|replace('_', ' ')|title }}</option>
+    {% endfor %}
+  </select>
+  <input type="hidden" name="page" value="1">
+  <button type="submit">Search</button>
+</form>
+
+<div id="results">
+  {% include "partials/alert_list.html" %}
+</div>
+{% endblock %}

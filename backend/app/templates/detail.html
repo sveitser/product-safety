@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}{{ alert.reference }} — Product Safety DB{% endblock %}
+{% block content %}
+<div style="margin-bottom:1rem">
+  <a href="/" style="color:#1a1a2e">← Back to search</a>
+</div>
+
+<div style="background:#fff;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.1);padding:1.5rem 2rem;display:grid;grid-template-columns:1fr 2fr;gap:2rem;">
+
+  <div>
+    {% for photo in photos %}
+    {% if photo.local_path %}
+    <img src="/images/{{ photo.local_path | basename }}"
+         alt="Product photo"
+         style="width:100%;border-radius:6px;margin-bottom:.5rem;{% if not photo.main_picture %}opacity:.7;{% endif %}">
+    {% endif %}
+    {% endfor %}
+    {% if not photos %}
+    <div style="width:100%;height:200px;background:#e8e8e8;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#aaa">No image</div>
+    {% endif %}
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:.75rem">
+    <div>
+      <span style="font-size:.8rem;color:#888">{{ alert.reference }}</span>
+      <h1 style="margin:.25rem 0;font-size:1.4rem">{{ alert.product_name or alert.product_name_specific or '(unnamed)' }}</h1>
+      {% if alert.product_name_specific and alert.product_name_specific != alert.product_name %}
+      <div style="color:#555">{{ alert.product_name_specific }}</div>
+      {% endif %}
+    </div>
+
+    <table style="border-collapse:collapse;font-size:.9rem;width:100%">
+      {% macro row(label, value) %}
+      {% if value %}
+      <tr>
+        <td style="padding:.3rem .75rem .3rem 0;color:#666;white-space:nowrap;vertical-align:top">{{ label }}</td>
+        <td style="padding:.3rem 0;font-weight:500">{{ value }}</td>
+      </tr>
+      {% endif %}
+      {% endmacro %}
+
+      {{ row("Category", alert.product_category | replace('_', ' ') | title) }}
+      {{ row("Brand", alert.brands | join(', ') if alert.brands) }}
+      {{ row("Model / Type", alert.model_types | join(', ') if alert.model_types) }}
+      {{ row("Published", alert.publication_date[:10] if alert.publication_date) }}
+      {{ row("Reporting country", alert.country) }}
+      {{ row("Country of origin", alert.country_of_origin) }}
+      {{ row("Sold online", alert.sold_online) }}
+      {{ row("Notification type", alert.notification_type | replace('_', ' ') | title if alert.notification_type) }}
+    </table>
+
+    {% if alert.risk_types %}
+    <div>
+      <div style="font-size:.8rem;color:#666;margin-bottom:.25rem">Risk types</div>
+      <div style="display:flex;flex-wrap:wrap;gap:.4rem">
+        {% for r in alert.risk_types %}
+        <span style="background:#fce4ec;color:#b71c1c;padding:.2rem .6rem;border-radius:12px;font-size:.8rem">{{ r | replace('_', ' ') | title }}</span>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if alert.risk_description %}
+    <div>
+      <div style="font-size:.8rem;color:#666;margin-bottom:.25rem">Risk description</div>
+      <div style="font-size:.9rem;line-height:1.5">{{ alert.risk_description }}</div>
+    </div>
+    {% endif %}
+
+    {% if alert.legal_provision %}
+    <div>
+      <div style="font-size:.8rem;color:#666;margin-bottom:.25rem">Legal basis</div>
+      <div style="font-size:.85rem;color:#444;line-height:1.4">{{ alert.legal_provision }}</div>
+    </div>
+    {% endif %}
+
+    {% if alert.measures %}
+    <div>
+      <div style="font-size:.8rem;color:#666;margin-bottom:.25rem">Measures taken</div>
+      <ul style="margin:.25rem 0;padding-left:1.25rem;font-size:.9rem">
+        {% for m in alert.measures %}
+        <li>{{ m | replace('_', ' ') | title }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
