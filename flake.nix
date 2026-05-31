@@ -23,6 +23,8 @@
           pydantic-settings
           rich
           typer
+          alembic
+          sqlalchemy
           # test / dev
           pytest
           pytest-cov

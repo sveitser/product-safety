@@ -76,6 +76,12 @@ nix develop                          # enter dev shell (installs pre-commit hook
 python scraper/ingest.py             # scrape TOYS alerts
 uvicorn backend.app.main:app --reload  # serve at localhost:8000
 
+# Database migrations (Alembic)
+alembic upgrade head                 # apply all pending migrations
+alembic revision -m "description"   # create a new migration
+alembic downgrade -1                 # roll back one migration
+alembic history                      # show migration history
+
 # Testing
 pytest                               # run all tests
 pytest --cov=backend --cov=scraper --cov-report=term-missing   # with coverage
