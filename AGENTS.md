@@ -72,27 +72,30 @@ flake.nix         Nix development environment
 
 ## Commands
 
-```bash
-nix develop                          # enter dev shell (installs pre-commit hooks)
-python scraper/ingest.py             # scrape TOYS alerts
-uvicorn backend.app.main:app --reload  # serve at localhost:8000
+Common development commands are defined in `justfile`. Run `just --list` to see all recipes.
 
-# Database migrations (Alembic)
-alembic upgrade head                 # apply all pending migrations
+```bash
+nix develop          # enter dev shell (installs pre-commit hooks)
+
+just dev             # start uvicorn dev server at localhost:8000
+just scrape          # run the scraper (TOYS alerts)
+just test            # run all tests
+just coverage        # run tests with coverage report
+just lint            # ruff check --fix + ruff format
+just typecheck       # ty check
+just migrate         # alembic upgrade head
+just ci              # lint + typecheck + test (full CI pipeline)
+```
+
+Additional Alembic commands (no just recipe needed):
+
+```bash
 alembic revision -m "description"   # create a new migration
 alembic downgrade -1                 # roll back one migration
 alembic history                      # show migration history
-
-# Testing
-pytest                               # run all tests
-pytest --cov=backend --cov=scraper --cov-report=term-missing   # with coverage
-pytest --cov=backend --cov=scraper --cov-report=term-missing 2>&1 | grep -v '100%'  # show uncovered lines only
-
-# Linting / formatting (also run automatically as pre-commit hooks)
-ruff check --fix .
-ruff format .
-ty check
 ```
+
+Linting and formatting also run automatically as pre-commit hooks.
 
 ## Commit Messages
 
