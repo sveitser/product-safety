@@ -9,7 +9,8 @@
 - **Git commits**: use `git -c commit.gpgsign=false commit` — the global config has a broken SSH signing key.
 - **Push via HTTPS token**: remote URL must be `https://sveitser:${GH_TOKEN}@github.com/sveitser/product-safety.git`. The token is in `.env`.
 - Watch token consumption; prefer small focused edits over large rewrites.
-- **After finishing each task**, run `gh issue list --repo sveitser/product-safety` and pick up the next open issue.
+- **After finishing each task**, run `gh issue list --repo sveitser/product-safety` and check open issues for new comments with `gh issue view <N> --comments`.
+- **When closing a GitHub issue**, first post a comment summarising what was done: which files were changed, the approach taken, and links to any follow-up issues. Use `gh issue comment <N> --body "..."` before (or alongside) `gh issue close <N>`. Include follow-up issue links (e.g. `#12`) in the comment body so the history stays connected.
 
 ## Project Goal
 
@@ -91,6 +92,32 @@ pytest --cov=backend --cov=scraper --cov-report=term-missing 2>&1 | grep -v '100
 ruff check --fix .
 ruff format .
 ty check
+```
+
+## Commit Messages
+
+Use **semantic commit** format: `<type>: <short description>` (imperative mood, no trailing period).
+
+| Type | When to use |
+|------|-------------|
+| `feat` | new feature or user-visible behaviour |
+| `fix` | bug fix |
+| `chore` | maintenance, dependency updates, tooling |
+| `docs` | documentation only |
+| `test` | adding or fixing tests |
+| `refactor` | code restructuring without behaviour change |
+| `ci` | CI/CD pipeline changes |
+| `style` | formatting, whitespace (no logic change) |
+
+Use `closes #N` in the commit message body (not the subject line) to auto-close issues.
+
+Example:
+```
+feat: add full-text search endpoint
+
+Implements FTS5-backed /search route with pagination.
+
+closes #3
 ```
 
 ## What NOT to do
