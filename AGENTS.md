@@ -1,5 +1,15 @@
 # Product Safety DB — Agent Guidelines
 
+## Working Style (IMPORTANT)
+
+- **Do not ask questions.** Work non-interactively. Make reasonable decisions.
+- **If input is needed from the human**, create a GitHub issue describing the blocker and continue with what can be done.
+- **If a tool is missing**, use `nix-shell -p <tool>` rather than stopping.
+- **Commit and push after each meaningful chunk of work.** Close GitHub issues as they are resolved (use `closes #N` in commit messages).
+- **Git commits**: use `git -c commit.gpgsign=false commit` — the global config has a broken SSH signing key.
+- **Push via HTTPS token**: remote URL must be `https://sveitser:${GH_TOKEN}@github.com/sveitser/product-safety.git`. The token is in `.env`.
+- Watch token consumption; prefer small focused edits over large rewrites.
+
 ## Project Goal
 
 Build a better-UX database and search interface for EU Safety Gate product safety alerts.
