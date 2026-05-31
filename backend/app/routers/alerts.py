@@ -97,9 +97,9 @@ def index(
     template = "partials/alert_list.html" if is_htmx else "index.html"
 
     return templates.TemplateResponse(
+        request,
         template,
         {
-            "request": request,
             "alerts": alerts_list,
             "q": q,
             "category": category,
@@ -130,6 +130,7 @@ def alert_detail(request: Request, alert_id: int) -> HTMLResponse:
     conn.close()
 
     return templates.TemplateResponse(
+        request,
         "detail.html",
-        {"request": request, "alert": alert, "photos": photos},
+        {"alert": alert, "photos": photos},
     )

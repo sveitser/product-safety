@@ -9,6 +9,7 @@
 - **Git commits**: use `git -c commit.gpgsign=false commit` — the global config has a broken SSH signing key.
 - **Push via HTTPS token**: remote URL must be `https://sveitser:${GH_TOKEN}@github.com/sveitser/product-safety.git`. The token is in `.env`.
 - Watch token consumption; prefer small focused edits over large rewrites.
+- **After finishing each task**, run `gh issue list --repo sveitser/product-safety` and pick up the next open issue.
 
 ## Project Goal
 
@@ -67,6 +68,24 @@ flake.nix         Nix development environment
 - SQLite file at `data/safety.db`, images at `data/images/`
 - No authentication or user accounts in v1
 - API must serve paginated results; frontend must work without JS enabled (HTMX graceful degradation)
+
+## Commands
+
+```bash
+nix develop                          # enter dev shell (installs pre-commit hooks)
+python scraper/ingest.py             # scrape TOYS alerts
+uvicorn backend.app.main:app --reload  # serve at localhost:8000
+
+# Testing
+pytest                               # run all tests
+pytest --cov=backend --cov=scraper --cov-report=term-missing   # with coverage
+pytest --cov=backend --cov=scraper --cov-report=term-missing 2>&1 | grep -v '100%'  # show uncovered lines only
+
+# Linting / formatting (also run automatically as pre-commit hooks)
+ruff check --fix .
+ruff format .
+ty check
+```
 
 ## What NOT to do
 
