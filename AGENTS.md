@@ -4,6 +4,7 @@
 
 - **Do not ask questions.** Work non-interactively. Make reasonable decisions.
 - **If input is needed from the human**, create a GitHub issue describing the blocker and continue with what can be done.
+- **All commands must run inside the Nix dev environment.** Use `nix develop --command <cmd>` (or rely on direnv if already activated). Pre-commit hooks, `ty`, `ruff`, `pytest`, and the scraper all require the devshell Python env on PATH — running them outside will pick up the wrong Python/tools.
 - **If a tool is missing**, use `nix-shell -p <tool>` rather than stopping.
 - **Commit and push after each meaningful chunk of work.** Close GitHub issues as they are resolved (use `closes #N` in commit messages).
 - **Git commits**: use `git -c commit.gpgsign=false commit` — the global config has a broken SSH signing key.

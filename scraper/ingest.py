@@ -160,7 +160,7 @@ async def fetch_page(client: httpx.AsyncClient, page: int, category: str) -> dic
         if resp.status_code == 200:
             return resp.json()
     except Exception as e:
-        print(f"  [warn] page {page}: {e}")
+        print(f"  [warn] page {page}: {type(e).__name__}: {e}")
     return None
 
 
@@ -206,7 +206,9 @@ async def run_historical(
     init_db()
     conn = get_conn()
 
-    async with httpx.AsyncClient(headers=HEADERS, timeout=30.0) as client:
+    async with httpx.AsyncClient(
+        headers=HEADERS, timeout=httpx.Timeout(60.0, connect=10.0)
+    ) as client:
         # Resolve which years to process
         if years is None:
             available = await fetch_webreport_years(client)
@@ -300,7 +302,9 @@ async def run(category: str = "TOYS", max_pages: int = 999, download_images: boo
     cat_label = "ALL categories" if category == "ALL" else f"category={category}"
     print(f"Starting ingestion ({cat_label}, max_pages={max_pages})")
 
-    async with httpx.AsyncClient(headers=HEADERS, timeout=30.0) as client:
+    async with httpx.AsyncClient(
+        headers=HEADERS, timeout=httpx.Timeout(60.0, connect=10.0)
+    ) as client:
         page = 0
         total_processed = 0
 

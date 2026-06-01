@@ -38,15 +38,24 @@
             hooks = {
               ruff = {
                 enable = true;
-                args = [ "check" "--fix" ];
+                name = "ruff";
+                entry = "${pkgs.ruff}/bin/ruff check --fix";
+                language = "system";
+                pass_filenames = true;
+                types = [ "python" ];
               };
               ruff-format = {
                 enable = true;
+                name = "ruff-format";
+                entry = "${pkgs.ruff}/bin/ruff format";
+                language = "system";
+                pass_filenames = true;
+                types = [ "python" ];
               };
               ty = {
                 enable = true;
                 name = "ty";
-                entry = "${pkgs.ty}/bin/ty check";
+                entry = "${pkgs.ty}/bin/ty check --python ${pythonEnv}/bin/python";
                 language = "system";
                 pass_filenames = false;
                 types = [ "python" ];
