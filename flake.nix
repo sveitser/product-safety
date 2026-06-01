@@ -74,6 +74,7 @@
             pkgs.litecli
             pkgs.jq
             pkgs.curl
+            pkgs.just
           ];
 
           shellHook = ''
