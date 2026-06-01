@@ -2,33 +2,33 @@
 # Run `just` or `just --list` to see available recipes
 
 # Start the uvicorn dev server
-dev:
-    uvicorn backend.app.main:app --reload
+dev *args:
+    uvicorn backend.app.main:app --reload --port 4455 {{args}}
 
 # Run the scraper
-scrape:
-    python scraper/ingest.py
+scrape *args:
+    python scraper/ingest.py {{args}}
 
 # Run tests
-test:
-    pytest
+test *args:
+    pytest {{args}}
 
 # Run tests with coverage report
-coverage:
-    pytest --cov=backend --cov=scraper --cov-report=term-missing
+coverage *args:
+    pytest --cov=backend --cov=scraper --cov-report=term-missing {{args}}
 
 # Run ruff linter and formatter
-lint:
-    ruff check --fix .
-    ruff format .
+lint *args:
+    ruff check --fix . {{args}}
+    ruff format . {{args}}
 
 # Run type checker
-typecheck:
-    ty check
+typecheck *args:
+    ty check {{args}}
 
 # Apply all pending database migrations
-migrate:
-    alembic upgrade head
+migrate *args:
+    alembic upgrade head {{args}}
 
 # Run lint + typecheck + test in sequence (CI pipeline)
 ci: lint typecheck test
