@@ -42,7 +42,7 @@ flake.nix         Nix development environment
 - Detail endpoint: `GET /public/api/notification/{id}?language=en`
 - Images: `GET /public/api/notification/image/{photoId}` → store on filesystem
 - Run once daily via systemd timer or cron
-- Historical backfill: see issue #5
+- Historical backfill: `python scraper/ingest.py --historical` (uses `POST /public/api/webreport/all`)
 
 ## Data Model (core fields)
 
@@ -78,8 +78,11 @@ Common development commands are defined in `justfile`. Run `just --list` to see 
 ```bash
 nix develop          # enter dev shell (installs pre-commit hooks)
 
-just dev             # start uvicorn dev server at localhost:8000
-just scrape          # run the scraper (TOYS alerts)
+just dev             # start uvicorn dev server at localhost:4455
+just scrape          # run the scraper (TOYS alerts, most-recent)
+# python scraper/ingest.py --all-categories   # all categories
+# python scraper/ingest.py --historical        # full historical backfill
+# python scraper/ingest.py --historical --year 2024  # one year
 just test            # run all tests
 just coverage        # run tests with coverage report
 just lint            # ruff check --fix + ruff format
