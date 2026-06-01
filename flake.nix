@@ -67,7 +67,6 @@
         inherit checks;
 
         devShells.default = pkgs.mkShell {
-          inherit (checks.pre-commit-check) shellHook;
           packages = [
             pythonEnv
             pkgs.ty
