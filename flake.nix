@@ -84,6 +84,7 @@
             pkgs.jq
             pkgs.curl
             pkgs.just
+            pkgs.pyright
           ];
 
           shellHook = ''
