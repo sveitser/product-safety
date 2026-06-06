@@ -34,11 +34,19 @@ jobs:
           path: ~/.cache/huggingface
           key: hf-clip-vit-base-patch32
 
-      - name: Scrape recent toys alerts
-        run: >
-          uv run --no-project --python 3.12
-          --with httpx --with alembic --with sqlalchemy
-          python scraper/ingest.py --category TOYS
+      - name: Scrape recent consumer-category alerts
+        run: |
+          for c in TOYS ELECTRICAL_APPLIANCES COSMETICS PROTECTIVE_EQUIPMENT \
+                   CHILDCARE_ARTICLES HOBBY_SPORTS_EQUIPMENT CLOTHING_TEXTILES \
+                   JEWELLERY CHEMICAL_PRODUCTS LIGHTING_EQUIPMENT LIGHTING_CHAINS \
+                   FURNITURE DECORATIVE_ARTICLES GADGETS KITCHEN_COOKING_ACCESSORIES \
+                   HAND_TOOLS LASER_POINTERS PYROTECHNIC_ARTICLES GAS_APPLIANCES OTHER; do
+            echo "::group::scrape $c"
+            uv run --no-project --python 3.12 \
+              --with httpx --with alembic --with sqlalchemy \
+              python scraper/ingest.py --category "$c"
+            echo "::endgroup::"
+          done
 
       - name: Export new per-ID alert files
         env:
@@ -61,7 +69,7 @@ jobs:
           if [ -n "$(git status --porcelain docs/data/alerts)" ]; then
             n=$(git status --porcelain docs/data/alerts | wc -l)
             git add docs/data/alerts
-            git commit -m "chore: daily scrape — $n new/updated toys alert(s)"
+            git commit -m "chore: daily scrape — $n new/updated alert(s)"
             git push
           else
             echo "No new alerts."
