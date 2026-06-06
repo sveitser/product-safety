@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Photo Search — Product Safety</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #f0f2f5; color: #222; min-height: 100vh; }
+
+    header { background: #1a1a2e; color: #fff; padding: 14px 20px; display: flex; align-items: center; gap: 20px; }
+    header h1 { font-size: 1.1rem; font-weight: 600; }
+    nav a { color: #aab; text-decoration: none; font-size: 0.9rem; margin-left: 14px; }
+    nav a:hover, nav a.active { color: #fff; }
+
+    main { max-width: 860px; margin: 32px auto; padding: 0 16px; }
+
+    #intro { text-align: center; }
+    #intro p { color: #555; margin-bottom: 20px; line-height: 1.5; }
+    .btn-primary {
+      background: #1a1a2e; color: #fff; border: none; border-radius: 8px;
+      padding: 12px 28px; font-size: 1rem; cursor: pointer;
+    }
+    .btn-primary:hover { background: #2a2a4e; }
+
+    #search-panel { display: none; }
+
+    .status-bar {
+      background: #fff; border-radius: 10px; padding: 16px;
+      margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.1);
+    }
+    .status-text { font-size: 0.9rem; color: #444; margin-bottom: 8px; }
+    progress { width: 100%; height: 6px; border-radius: 3px; accent-color: #1a1a2e; }
+    progress[value="100"] { accent-color: #2e7d32; }
+
+    #drop-zone {
+      border: 2px dashed #bbb; border-radius: 10px; padding: 36px 16px;
+      text-align: center; cursor: pointer; background: #fff;
+      transition: border-color .2s, background .2s;
+      margin-bottom: 20px;
+    }
+    #drop-zone:hover, #drop-zone.drag-over { border-color: #1a1a2e; background: #f4f6ff; }
+    #drop-zone .dz-icon { font-size: 2.5rem; display: block; margin-bottom: 8px; }
+    #drop-zone .dz-label { font-size: 0.95rem; color: #555; }
+    #drop-zone .dz-sub { font-size: 0.8rem; color: #999; margin-top: 4px; }
+    #drop-zone.loading { cursor: default; border-color: #ccc; }
+    #drop-zone.loading .dz-label { color: #999; }
+
+    #preview-wrap { display: none; margin-bottom: 20px; }
+    #preview-wrap img { max-height: 180px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+
+    #results-section { display: none; }
+    #results-section h2 { font-size: 1rem; color: #555; margin-bottom: 14px; }
+
+    .results-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      gap: 14px;
+    }
+    .card {
+      background: #fff; border-radius: 10px; overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,.1);
+      transition: box-shadow .15s; text-decoration: none; color: inherit; display: block;
+    }
+    .card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.18); }
+    .card-img {
+      width: 100%; height: 150px; object-fit: contain;
+      background: #f8f8f8; display: block;
+    }
+    .card-body { padding: 10px; }
+    .card-name { font-size: 0.82rem; font-weight: 600; line-height: 1.3; margin-bottom: 4px; }
+    .card-ref { font-size: 0.72rem; color: #777; }
+    .card-cat {
+      display: inline-block; background: #e3f2fd; color: #1565c0;
+      border-radius: 3px; padding: 1px 6px; font-size: 0.68rem; margin-top: 5px;
+    }
+    .card-score { font-size: 0.68rem; color: #999; margin-top: 3px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Product Safety</h1>
+    <nav>
+      <a href="index.html">Search</a>
+      <a href="photo.html" class="active">Photo Search</a>
+    </nav>
+  </header>
+
+  <main>
+    <section id="intro">
+      <p>Snap or upload a product photo to find visually similar items flagged in the EU Safety Gate.</p>
+      <button class="btn-primary" id="start-btn">Start photo search</button>
+    </section>
+
+    <section id="search-panel">
+      <div class="status-bar">
+        <div class="status-text" id="status-text">Loading AI model…</div>
+        <progress id="progress" value="0" max="100"></progress>
+      </div>
+
+      <div id="drop-zone" class="loading">
+        <span class="dz-icon">📷</span>
+        <span class="dz-label" id="dz-label">Loading model, please wait…</span>
+        <span class="dz-sub">camera or file upload</span>
+        <input type="file" id="file-input" accept="image/*" capture="environment" style="display:none" disabled>
+      </div>
+
+      <div id="preview-wrap">
+        <img id="preview" src="" alt="query photo">
+      </div>
+
+      <section id="results-section">
+        <h2 id="results-heading">Top matches</h2>
+        <div class="results-grid" id="results"></div>
+      </section>
+    </section>
+  </main>
+
+  <script type="module">
+    // ---- state ----
+    let model = null;
+    let processor = null;
+    let embeddings = null; // Float32Array (N * 512)
+    let metadata = null;   // { count, dim, items[] }
+    let RawImage = null;
+    let modelReady = false;
+    let dataReady = false;
+    let pendingFile = null;
+
+    // ---- dom refs ----
+    const startBtn = document.getElementById('start-btn');
+    const intro = document.getElementById('intro');
+    const panel = document.getElementById('search-panel');
+    const statusText = document.getElementById('status-text');
+    const progress = document.getElementById('progress');
+    const dropZone = document.getElementById('drop-zone');
+    const dzLabel = document.getElementById('dz-label');
+    const fileInput = document.getElementById('file-input');
+    const previewWrap = document.getElementById('preview-wrap');
+    const previewImg = document.getElementById('preview');
+    const resultsSection = document.getElementById('results-section');
+    const resultsHeading = document.getElementById('results-heading');
+    const resultsGrid = document.getElementById('results');
+
+    // ---- start button: lazy load everything ----
+    startBtn.addEventListener('click', () => {
+      intro.style.display = 'none';
+      panel.style.display = 'block';
+      loadAll();
+    });
+
+    // ---- drop zone click ----
+    dropZone.addEventListener('click', () => {
+      if (modelReady && dataReady) fileInput.click();
+    });
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      if (modelReady && dataReady && e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener('change', e => {
+      if (e.target.files[0]) handleFile(e.target.files[0]);
+    });
+
+    // ---- progress helper ----
+    function setProgress(pct, msg) {
+      progress.value = Math.round(pct);
+      statusText.textContent = msg;
+    }
+
+    function onReady() {
+      if (!(modelReady && dataReady)) return;
+      setProgress(100, `Ready — ${metadata.count} products indexed`);
+      dropZone.classList.remove('loading');
+      dzLabel.textContent = 'Tap to take a photo or drag an image here';
+      fileInput.disabled = false;
+      if (pendingFile) {
+        const f = pendingFile; pendingFile = null;
+        handleFile(f);
+      }
+    }
+
+    // ---- load model + data in parallel ----
+    async function loadAll() {
+      const CDN = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
+      const { CLIPVisionModelWithProjection, AutoProcessor, RawImage: RawImageCls, env } =
+        await import(`${CDN}`);
+
+      RawImage = RawImageCls;
+      env.allowLocalModels = false;
+
+      const MODEL = 'Xenova/clip-vit-base-patch32';
+
+      const modelProgress = (info) => {
+        if (info.status === 'progress' && info.total) {
+          const pct = (info.loaded / info.total) * 100;
+          setProgress(pct * 0.8, `Loading model: ${info.file} (${Math.round(pct)}%)`);
+        }
+      };
+
+      const [_model, _proc] = await Promise.all([
+        CLIPVisionModelWithProjection.from_pretrained(MODEL, { dtype: 'fp16', progress_callback: modelProgress }),
+        AutoProcessor.from_pretrained(MODEL),
+      ]);
+      model = _model;
+      processor = _proc;
+      modelReady = true;
+      onReady();
+
+      // load embeddings + metadata
+      setProgress(85, 'Loading product database…');
+      const [embRes, metaRes] = await Promise.all([
+        fetch('data/embeddings.bin'),
+        fetch('data/metadata.json'),
+      ]);
+      if (!embRes.ok || !metaRes.ok) {
+        setProgress(0, 'Error: data files not found. Run `just bundle-data` first.');
+        return;
+      }
+      embeddings = new Float32Array(await embRes.arrayBuffer());
+      metadata = await metaRes.json();
+      dataReady = true;
+      onReady();
+    }
+
+    // ---- encode + search ----
+    async function handleFile(file) {
+      if (!modelReady || !dataReady) { pendingFile = file; return; }
+
+      previewImg.src = URL.createObjectURL(file);
+      previewWrap.style.display = 'block';
+      setProgress(0, 'Analyzing photo…');
+      resultsSection.style.display = 'none';
+
+      const image = await RawImage.fromBlob(file);
+      const inputs = await processor(image);
+      const { image_embeds } = await model(inputs);
+      const raw = image_embeds.data; // Float32Array(512)
+      const queryEmb = l2normalize(raw);
+
+      const N = metadata.count;
+      const DIM = metadata.dim;
+      const scores = new Float32Array(N);
+      for (let i = 0; i < N; i++) {
+        let dot = 0;
+        const off = i * DIM;
+        for (let j = 0; j < DIM; j++) dot += queryEmb[j] * embeddings[off + j];
+        scores[i] = dot;
+      }
+
+      const top = Array.from({ length: N }, (_, i) => i)
+        .sort((a, b) => scores[b] - scores[a])
+        .slice(0, 10)
+        .map(i => ({ ...metadata.items[i], score: scores[i] }));
+
+      showResults(top);
+      setProgress(100, 'Done');
+    }
+
+    function l2normalize(arr) {
+      let norm = 0;
+      for (const v of arr) norm += v * v;
+      norm = Math.sqrt(norm);
+      if (norm < 1e-12) return arr;
+      const out = new Float32Array(arr.length);
+      for (let i = 0; i < arr.length; i++) out[i] = arr[i] / norm;
+      return out;
+    }
+
+    function showResults(items) {
+      resultsHeading.textContent = `Top ${items.length} matches`;
+      resultsGrid.innerHTML = items.map(item => `
+        <a class="card" href="detail.html?id=${item.alert_id}">
+          <img class="card-img" src="${item.image_url}" loading="lazy"
+               alt="${escHtml(item.product_name)}"
+               onerror="this.style.display='none'">
+          <div class="card-body">
+            <div class="card-name">${escHtml(item.product_name || 'Unknown product')}</div>
+            <div class="card-ref">${escHtml(item.reference)}</div>
+            <div class="card-cat">${escHtml(item.category)}</div>
+            <div class="card-score">similarity ${(item.score * 100).toFixed(1)}%</div>
+          </div>
+        </a>
+      `).join('');
+      resultsSection.style.display = 'block';
+      resultsSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function escHtml(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>

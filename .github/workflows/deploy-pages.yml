@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "docs/**"
+      - "scripts/bundle_data.py"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
 
@@ -26,6 +27,14 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build data bundles from per-ID alert files
+        run: python scripts/bundle_data.py
 
       - name: Upload docs artifact
         uses: actions/upload-pages-artifact@v3

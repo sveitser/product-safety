@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Alert — Product Safety</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #f0f2f5; color: #222; min-height: 100vh; }
+
+    header { background: #1a1a2e; color: #fff; padding: 14px 20px; display: flex; align-items: center; gap: 20px; }
+    header h1 { font-size: 1.1rem; font-weight: 600; }
+    nav a { color: #aab; text-decoration: none; font-size: 0.9rem; margin-left: 14px; }
+    nav a:hover, nav a.active { color: #fff; }
+
+    main { max-width: 980px; margin: 24px auto; padding: 0 16px; }
+    .back { display: inline-block; margin-bottom: 1rem; color: #1a1a2e; text-decoration: none; font-size: 0.9rem; }
+    .back:hover { text-decoration: underline; }
+
+    .panel {
+      background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.1);
+      padding: 1.5rem 2rem; display: grid; grid-template-columns: 1fr 2fr; gap: 2rem;
+    }
+    @media (max-width: 640px) { .panel { grid-template-columns: 1fr; } }
+    .photos img { width: 100%; border-radius: 6px; margin-bottom: .5rem; }
+    .photos img.secondary { opacity: .7; }
+    .no-img { width: 100%; height: 200px; background: #e8e8e8; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #aaa; }
+
+    .info { display: flex; flex-direction: column; gap: .75rem; }
+    .ref { font-size: .8rem; color: #888; }
+    .info h2 { margin: .25rem 0; font-size: 1.4rem; }
+    .subtitle { color: #555; }
+    table { border-collapse: collapse; font-size: .9rem; width: 100%; }
+    td.label { padding: .3rem .75rem .3rem 0; color: #666; white-space: nowrap; vertical-align: top; }
+    td.value { padding: .3rem 0; font-weight: 500; }
+    .section-label { font-size: .8rem; color: #666; margin-bottom: .25rem; }
+    .risk-badges { display: flex; flex-wrap: wrap; gap: .4rem; }
+    .risk-badge { background: #fce4ec; color: #b71c1c; padding: .2rem .6rem; border-radius: 12px; font-size: .8rem; }
+    .risk-desc { font-size: .9rem; line-height: 1.5; }
+    .legal { font-size: .85rem; color: #444; line-height: 1.4; }
+    .measures { margin: .25rem 0; padding-left: 1.25rem; font-size: .9rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Product Safety</h1>
+    <nav>
+      <a href="index.html">Search</a>
+      <a href="photo.html">Photo Search</a>
+    </nav>
+  </header>
+
+  <main>
+    <a class="back" href="index.html">← Back to search</a>
+    <div id="content"></div>
+  </main>
+
+  <script type="module">
+    const EU_IMAGE_BASE = 'https://ec.europa.eu/safety-gate-alerts/public/api/notification/image';
+    const content = document.getElementById('content');
+
+    init();
+
+    async function init() {
+      const id = new URLSearchParams(location.search).get('id');
+      if (!id || !/^\d+$/.test(id)) {
+        content.innerHTML = '<p>Invalid alert id.</p>';
+        return;
+      }
+      const res = await fetch(`data/alerts/${id}.json`);
+      if (!res.ok) {
+        content.innerHTML = '<h2>Not found</h2>';
+        return;
+      }
+      render(await res.json());
+    }
+
+    function render(a) {
+      const name = a.product_name || a.product_name_specific || '(unnamed)';
+      document.title = `${a.reference} — Product Safety`;
+
+      const photos = (a.photos || []).slice()
+        .sort((p1, p2) => (p2.main === true) - (p1.main === true));
+      const photosHtml = photos.length
+        ? photos.map(p =>
+            `<img class="${p.main ? '' : 'secondary'}" src="${EU_IMAGE_BASE}/${p.photo_id}" alt="Product photo" loading="lazy" onerror="this.style.display='none'">`
+          ).join('')
+        : '<div class="no-img">No image</div>';
+
+      const subtitle = (a.product_name_specific && a.product_name_specific !== a.product_name)
+        ? `<div class="subtitle">${escHtml(a.product_name_specific)}</div>` : '';
+
+      const rows = [
+        ['Category', titleCase(a.product_category)],
+        ['Brand', (a.brands || []).join(', ')],
+        ['Model / Type', (a.model_types || []).join(', ')],
+        ['Published', (a.publication_date || '').slice(0, 10)],
+        ['Reporting country', a.country],
+        ['Country of origin', a.country_of_origin],
+        ['Sold online', a.sold_online],
+        ['Notification type', a.notification_type ? titleCase(a.notification_type) : ''],
+      ].filter(([, v]) => v)
+       .map(([l, v]) => `<tr><td class="label">${escHtml(l)}</td><td class="value">${escHtml(v)}</td></tr>`)
+       .join('');
+
+      const risks = (a.risk_types && a.risk_types.length) ? `
+        <div>
+          <div class="section-label">Risk types</div>
+          <div class="risk-badges">
+            ${a.risk_types.map(r => `<span class="risk-badge">${escHtml(titleCase(r))}</span>`).join('')}
+          </div>
+        </div>` : '';
+
+      const riskDesc = a.risk_description ? `
+        <div>
+          <div class="section-label">Risk description</div>
+          <div class="risk-desc">${escHtml(a.risk_description)}</div>
+        </div>` : '';
+
+      const legal = a.legal_provision ? `
+        <div>
+          <div class="section-label">Legal basis</div>
+          <div class="legal">${escHtml(a.legal_provision)}</div>
+        </div>` : '';
+
+      const measures = (a.measures && a.measures.length) ? `
+        <div>
+          <div class="section-label">Measures taken</div>
+          <ul class="measures">${a.measures.map(m => `<li>${escHtml(titleCase(m))}</li>`).join('')}</ul>
+        </div>` : '';
+
+      content.innerHTML = `
+        <div class="panel">
+          <div class="photos">${photosHtml}</div>
+          <div class="info">
+            <div>
+              <span class="ref">${escHtml(a.reference)}</span>
+              <h2>${escHtml(name)}</h2>
+              ${subtitle}
+            </div>
+            <table>${rows}</table>
+            ${risks}
+            ${riskDesc}
+            ${legal}
+            ${measures}
+          </div>
+        </div>`;
+    }
+
+    function titleCase(s) {
+      return String(s || '').replace(/_/g, ' ').toLowerCase()
+        .replace(/\b\w/g, c => c.toUpperCase());
+    }
+
+    function escHtml(s) {
+      return String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+  </script>
+</body>
+</html>

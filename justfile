@@ -30,11 +30,15 @@ typecheck *args:
 migrate *args:
     alembic upgrade head {{args}}
 
-# Compute CLIP embeddings for all product photos (needs `nix develop .#ml` deps)
-build-embeddings *args:
-    nix --extra-experimental-features 'nix-command flakes' develop .#ml --command python scripts/compute_embeddings.py {{args}}
+# Export per-ID alert files with CLIP embeddings (needs `nix develop .#ml` deps)
+export-alerts *args:
+    nix --extra-experimental-features 'nix-command flakes' develop .#ml --command python scripts/export_alerts.py {{args}}
 
-# Serve the static photo search frontend locally
+# Bundle per-ID alert files into browser artifacts (stdlib only)
+bundle-data *args:
+    python scripts/bundle_data.py {{args}}
+
+# Serve the static frontend locally
 serve-frontend:
     python -m http.server 8080 --directory docs
 

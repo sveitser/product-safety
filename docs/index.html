@@ -3,295 +3,265 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Product Safety — Photo Search</title>
+  <title>Search — Product Safety</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: system-ui, -apple-system, sans-serif; background: #f0f2f5; color: #222; min-height: 100vh; }
 
-    header { background: #1a1a2e; color: #fff; padding: 14px 20px; display: flex; align-items: center; gap: 12px; }
+    header { background: #1a1a2e; color: #fff; padding: 14px 20px; display: flex; align-items: center; gap: 20px; }
     header h1 { font-size: 1.1rem; font-weight: 600; }
+    nav a { color: #aab; text-decoration: none; font-size: 0.9rem; margin-left: 14px; }
+    nav a:hover, nav a.active { color: #fff; }
 
-    main { max-width: 860px; margin: 32px auto; padding: 0 16px; }
+    main { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
 
-    /* --- intro --- */
-    #intro { text-align: center; }
-    #intro p { color: #555; margin-bottom: 20px; line-height: 1.5; }
-    .btn-primary {
-      background: #1a1a2e; color: #fff; border: none; border-radius: 8px;
-      padding: 12px 28px; font-size: 1rem; cursor: pointer;
+    .search-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .search-bar input[type="text"] {
+      flex: 1; min-width: 220px; padding: 10px 14px; font-size: 1rem;
+      border: 1px solid #ccc; border-radius: 8px;
     }
-    .btn-primary:hover { background: #2a2a4e; }
-
-    /* --- search panel --- */
-    #search-panel { display: none; }
-
-    .status-bar {
-      background: #fff; border-radius: 10px; padding: 16px;
-      margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.1);
+    .search-bar select {
+      padding: 10px; font-size: 0.95rem; border: 1px solid #ccc; border-radius: 8px; background: #fff;
     }
-    .status-text { font-size: 0.9rem; color: #444; margin-bottom: 8px; }
-    progress { width: 100%; height: 6px; border-radius: 3px; accent-color: #1a1a2e; }
-    progress[value="100"] { accent-color: #2e7d32; }
 
-    /* --- drop zone --- */
-    #drop-zone {
-      border: 2px dashed #bbb; border-radius: 10px; padding: 36px 16px;
-      text-align: center; cursor: pointer; background: #fff;
-      transition: border-color .2s, background .2s;
-      margin-bottom: 20px;
+    .results-meta { font-size: 0.85rem; color: #777; margin-bottom: 12px; }
+
+    .alert-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px;
     }
-    #drop-zone:hover, #drop-zone.drag-over { border-color: #1a1a2e; background: #f4f6ff; }
-    #drop-zone .dz-icon { font-size: 2.5rem; display: block; margin-bottom: 8px; }
-    #drop-zone .dz-label { font-size: 0.95rem; color: #555; }
-    #drop-zone .dz-sub { font-size: 0.8rem; color: #999; margin-top: 4px; }
-    #drop-zone.loading { cursor: default; border-color: #ccc; }
-    #drop-zone.loading .dz-label { color: #999; }
-
-    /* --- preview + results --- */
-    #preview-wrap { display: none; margin-bottom: 20px; }
-    #preview-wrap img { max-height: 180px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
-
-    #results-section { display: none; }
-    #results-section h2 { font-size: 1rem; color: #555; margin-bottom: 14px; }
-
-    .results-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-      gap: 14px;
-    }
-    .card {
+    .alert-card {
       background: #fff; border-radius: 10px; overflow: hidden;
-      box-shadow: 0 1px 4px rgba(0,0,0,.1);
-      transition: box-shadow .15s;
+      box-shadow: 0 1px 4px rgba(0,0,0,.1); transition: box-shadow .15s;
+      text-decoration: none; color: inherit; display: block;
     }
-    .card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.18); }
-    .card-img {
-      width: 100%; height: 150px; object-fit: contain;
-      background: #f8f8f8; display: block;
-    }
-    .card-body { padding: 10px; }
-    .card-name { font-size: 0.82rem; font-weight: 600; line-height: 1.3; margin-bottom: 4px; }
-    .card-ref { font-size: 0.72rem; color: #777; }
-    .card-cat {
+    .alert-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.18); }
+    .alert-card img { width: 100%; height: 170px; object-fit: contain; background: #f8f8f8; display: block; }
+    .no-img { width: 100%; height: 170px; background: #eee; display: flex; align-items: center; justify-content: center; color: #aaa; font-size: 0.85rem; }
+    .card-body { padding: 11px; }
+    .ref { font-size: 0.72rem; color: #888; margin-bottom: 3px; }
+    .product-name { font-size: 0.9rem; font-weight: 600; line-height: 1.3; }
+    .brands { font-size: 0.8rem; color: #555; margin-top: 2px; }
+    .category-badge {
       display: inline-block; background: #e3f2fd; color: #1565c0;
-      border-radius: 3px; padding: 1px 6px; font-size: 0.68rem; margin-top: 5px;
+      border-radius: 3px; padding: 1px 7px; font-size: 0.68rem; margin-top: 7px;
     }
-    .card-score { font-size: 0.68rem; color: #999; margin-top: 3px; }
+    .risk-list { font-size: 0.75rem; color: #b71c1c; margin-top: 6px; }
+    .country { font-size: 0.72rem; color: #888; margin-top: 5px; }
+
+    .pagination { display: flex; gap: 6px; justify-content: center; align-items: center; margin: 24px 0; flex-wrap: wrap; }
+    .pagination button {
+      border: 1px solid #ccc; background: #fff; border-radius: 6px; padding: 6px 12px;
+      cursor: pointer; font-size: 0.85rem;
+    }
+    .pagination button:disabled { opacity: .4; cursor: default; }
+    .pagination .current { font-weight: 600; padding: 6px 10px; }
+
+    .empty { color: #888; grid-column: 1 / -1; padding: 40px; text-align: center; }
   </style>
 </head>
 <body>
   <header>
-    <h1>Product Safety — Photo Search</h1>
+    <h1>Product Safety</h1>
+    <nav>
+      <a href="index.html" class="active">Search</a>
+      <a href="photo.html">Photo Search</a>
+    </nav>
   </header>
 
   <main>
-    <section id="intro">
-      <p>Snap or upload a product photo to find visually similar items flagged in the EU Safety Gate.</p>
-      <button class="btn-primary" id="start-btn">Start photo search</button>
-    </section>
-
-    <section id="search-panel">
-      <div class="status-bar">
-        <div class="status-text" id="status-text">Loading AI model…</div>
-        <progress id="progress" value="0" max="100"></progress>
-      </div>
-
-      <div id="drop-zone" class="loading">
-        <span class="dz-icon">📷</span>
-        <span class="dz-label" id="dz-label">Loading model, please wait…</span>
-        <span class="dz-sub">camera or file upload</span>
-        <input type="file" id="file-input" accept="image/*" capture="environment" style="display:none" disabled>
-      </div>
-
-      <div id="preview-wrap">
-        <img id="preview" src="" alt="query photo">
-      </div>
-
-      <section id="results-section">
-        <h2 id="results-heading">Top matches</h2>
-        <div class="results-grid" id="results"></div>
-      </section>
-    </section>
+    <div class="search-bar">
+      <input type="text" id="q" placeholder="Search products, brands, risks…" autocomplete="off">
+      <select id="category"><option value="">All categories</option></select>
+    </div>
+    <div class="results-meta" id="meta">Loading…</div>
+    <div class="alert-grid" id="results"></div>
+    <div class="pagination" id="pagination"></div>
   </main>
 
   <script type="module">
-    // ---- state ----
-    let model = null;
-    let processor = null;
-    let embeddings = null; // Float32Array (N * 512)
-    let metadata = null;   // { count, dim, items[] }
-    let RawImage = null;
-    let modelReady = false;
-    let dataReady = false;
-    let pendingFile = null;
+    import MiniSearch from 'https://cdn.jsdelivr.net/npm/minisearch@7.1.0/+esm';
 
-    // ---- dom refs ----
-    const startBtn = document.getElementById('start-btn');
-    const intro = document.getElementById('intro');
-    const panel = document.getElementById('search-panel');
-    const statusText = document.getElementById('status-text');
-    const progress = document.getElementById('progress');
-    const dropZone = document.getElementById('drop-zone');
-    const dzLabel = document.getElementById('dz-label');
-    const fileInput = document.getElementById('file-input');
-    const previewWrap = document.getElementById('preview-wrap');
-    const previewImg = document.getElementById('preview');
-    const resultsSection = document.getElementById('results-section');
-    const resultsHeading = document.getElementById('results-heading');
-    const resultsGrid = document.getElementById('results');
+    const EU_IMAGE_BASE = 'https://ec.europa.eu/safety-gate-alerts/public/api/notification/image';
+    const PAGE_SIZE = 20;
+    const SEARCH_FIELDS = [
+      'reference', 'product_name', 'product_name_specific', 'brands',
+      'model_types', 'risk_description', 'country', 'country_of_origin',
+    ];
 
-    // ---- start button: lazy load everything ----
-    startBtn.addEventListener('click', () => {
-      intro.style.display = 'none';
-      panel.style.display = 'block';
-      loadAll();
-    });
+    const qInput = document.getElementById('q');
+    const catSelect = document.getElementById('category');
+    const metaEl = document.getElementById('meta');
+    const resultsEl = document.getElementById('results');
+    const pagEl = document.getElementById('pagination');
 
-    // ---- drop zone click ----
-    dropZone.addEventListener('click', () => {
-      if (modelReady && dataReady) fileInput.click();
-    });
-    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-    dropZone.addEventListener('drop', e => {
-      e.preventDefault();
-      dropZone.classList.remove('drag-over');
-      if (modelReady && dataReady && e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
-    });
-    fileInput.addEventListener('change', e => {
-      if (e.target.files[0]) handleFile(e.target.files[0]);
-    });
+    let byId = new Map();    // id -> alert
+    let allByDate = [];      // all alerts, date desc
+    let ms = null;
+    let state = { q: '', category: '', page: 1 };
 
-    // ---- progress helper ----
-    function setProgress(pct, msg) {
-      progress.value = Math.round(pct);
-      statusText.textContent = msg;
-    }
+    init();
 
-    function onReady() {
-      if (!(modelReady && dataReady)) return;
-      setProgress(100, `Ready — ${metadata.count} products indexed`);
-      dropZone.classList.remove('loading');
-      dzLabel.textContent = 'Tap to take a photo or drag an image here';
-      fileInput.disabled = false;
-      if (pendingFile) {
-        const f = pendingFile; pendingFile = null;
-        handleFile(f);
-      }
-    }
-
-    // ---- load model + data in parallel ----
-    async function loadAll() {
-      const CDN = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
-      const { CLIPVisionModelWithProjection, AutoProcessor, RawImage: RawImageCls, env } =
-        await import(`${CDN}`);
-
-      RawImage = RawImageCls;
-      env.allowLocalModels = false;
-
-      const MODEL = 'Xenova/clip-vit-base-patch32';
-
-      const modelProgress = (info) => {
-        if (info.status === 'progress' && info.total) {
-          const pct = (info.loaded / info.total) * 100;
-          setProgress(pct * 0.8, `Loading model: ${info.file} (${Math.round(pct)}%)`);
-        }
-      };
-
-      const [_model, _proc] = await Promise.all([
-        CLIPVisionModelWithProjection.from_pretrained(MODEL, { dtype: 'fp16', progress_callback: modelProgress }),
-        AutoProcessor.from_pretrained(MODEL),
-      ]);
-      model = _model;
-      processor = _proc;
-      modelReady = true;
-      onReady();
-
-      // load embeddings + metadata
-      setProgress(85, 'Loading product database…');
-      const [embRes, metaRes] = await Promise.all([
-        fetch('data/embeddings.bin'),
-        fetch('data/metadata.json'),
-      ]);
-      if (!embRes.ok || !metaRes.ok) {
-        setProgress(0, 'Error: data files not found. Run `just build-embeddings` first.');
+    async function init() {
+      const res = await fetch('data/alerts-bundle.json');
+      if (!res.ok) {
+        metaEl.textContent = 'Error: data/alerts-bundle.json not found. Run `just bundle-data`.';
         return;
       }
-      embeddings = new Float32Array(await embRes.arrayBuffer());
-      metadata = await metaRes.json();
-      dataReady = true;
-      onReady();
-    }
+      const bundle = await res.json();
+      allByDate = bundle.items;
+      for (const a of allByDate) byId.set(a.id, a);
 
-    // ---- encode + search ----
-    async function handleFile(file) {
-      if (!modelReady || !dataReady) { pendingFile = file; return; }
-
-      previewImg.src = URL.createObjectURL(file);
-      previewWrap.style.display = 'block';
-      setProgress(0, 'Analyzing photo…');
-      resultsSection.style.display = 'none';
-
-      const image = await RawImage.fromBlob(file);
-      const inputs = await processor(image);
-      const { image_embeds } = await model(inputs);
-      const raw = image_embeds.data; // Float32Array(512)
-      const queryEmb = l2normalize(raw);
-
-      const N = metadata.count;
-      const DIM = metadata.dim;
-      const scores = new Float32Array(N);
-      for (let i = 0; i < N; i++) {
-        let dot = 0;
-        const off = i * DIM;
-        for (let j = 0; j < DIM; j++) dot += queryEmb[j] * embeddings[off + j];
-        scores[i] = dot;
+      for (const c of bundle.categories) {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = titleCase(c);
+        catSelect.appendChild(opt);
       }
 
-      const top = Array.from({ length: N }, (_, i) => i)
-        .sort((a, b) => scores[b] - scores[a])
-        .slice(0, 10)
-        .map(i => ({ ...metadata.items[i], score: scores[i] }));
+      ms = new MiniSearch({
+        idField: 'id',
+        fields: SEARCH_FIELDS,
+        extractField: (doc, field) => {
+          const v = doc[field];
+          return Array.isArray(v) ? v.join(' ') : (v ?? '');
+        },
+        searchOptions: {
+          prefix: true,
+          fuzzy: 0.2,
+          boost: { product_name: 3, brands: 2, product_name_specific: 2 },
+        },
+      });
+      ms.addAll(allByDate);
 
-      showResults(top);
-      setProgress(100, 'Done');
+      readUrl();
+      qInput.addEventListener('input', () => { state.q = qInput.value; state.page = 1; run(); });
+      catSelect.addEventListener('change', () => { state.category = catSelect.value; state.page = 1; run(); });
+      window.addEventListener('popstate', () => { readUrl(); run(false); });
+      run(false);
     }
 
-    function l2normalize(arr) {
-      let norm = 0;
-      for (const v of arr) norm += v * v;
-      norm = Math.sqrt(norm);
-      if (norm < 1e-12) return arr;
-      const out = new Float32Array(arr.length);
-      for (let i = 0; i < arr.length; i++) out[i] = arr[i] / norm;
-      return out;
+    function readUrl() {
+      const p = new URLSearchParams(location.search);
+      state.q = p.get('q') || '';
+      state.category = p.get('category') || '';
+      state.page = Math.max(1, parseInt(p.get('page') || '1', 10));
+      qInput.value = state.q;
+      catSelect.value = state.category;
     }
 
-    function showResults(items) {
-      resultsHeading.textContent = `Top ${items.length} matches`;
-      resultsGrid.innerHTML = items.map(item => `
-        <div class="card">
-          <img class="card-img" src="${item.image_url}" loading="lazy"
-               alt="${escHtml(item.product_name)}"
-               onerror="this.style.display='none'">
-          <div class="card-body">
-            <div class="card-name">${escHtml(item.product_name || 'Unknown product')}</div>
-            <div class="card-ref">${escHtml(item.reference)}</div>
-            <div class="card-cat">${escHtml(item.category)}</div>
-            <div class="card-score">similarity ${(item.score * 100).toFixed(1)}%</div>
-          </div>
-        </div>
-      `).join('');
-      resultsSection.style.display = 'block';
-      resultsSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    function writeUrl() {
+      const p = new URLSearchParams();
+      if (state.q) p.set('q', state.q);
+      if (state.category) p.set('category', state.category);
+      if (state.page > 1) p.set('page', state.page);
+      const qs = p.toString();
+      history.replaceState(null, '', qs ? `?${qs}` : location.pathname);
+    }
+
+    function currentResults() {
+      let items;
+      if (state.q.trim()) {
+        items = ms.search(state.q).map(r => byId.get(r.id));
+      } else {
+        items = allByDate; // already date desc
+      }
+      if (state.category) items = items.filter(a => a.product_category === state.category);
+      return items;
+    }
+
+    function run(updateUrl = true) {
+      if (updateUrl) writeUrl();
+      const items = currentResults();
+      const total = items.length;
+      const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+      if (state.page > totalPages) state.page = totalPages;
+      const start = (state.page - 1) * PAGE_SIZE;
+      const pageItems = items.slice(start, start + PAGE_SIZE);
+
+      metaEl.textContent = `${total} alert${total === 1 ? '' : 's'} found`;
+      renderCards(pageItems);
+      renderPagination(totalPages);
+    }
+
+    function mainPhotoUrl(a) {
+      if (!a.photos || !a.photos.length) return null;
+      const main = a.photos.find(p => p.main) || a.photos[0];
+      return `${EU_IMAGE_BASE}/${main.photo_id}`;
+    }
+
+    function renderCards(items) {
+      if (!items.length) {
+        resultsEl.innerHTML = '<p class="empty">No alerts found.</p>';
+        return;
+      }
+      resultsEl.innerHTML = items.map(a => {
+        const img = mainPhotoUrl(a);
+        const name = a.product_name || a.product_name_specific || '(unnamed)';
+        const date = (a.publication_date || '').slice(0, 10);
+        const specific = (a.product_name_specific && a.product_name_specific !== a.product_name)
+          ? `<div class="brands">${escHtml(a.product_name_specific)}</div>` : '';
+        const brands = (a.brands && a.brands.length)
+          ? `<div class="brands">${escHtml(a.brands.join(', '))}</div>` : '';
+        const risks = (a.risk_types && a.risk_types.length)
+          ? `<div class="risk-list">⚠ ${escHtml(a.risk_types.map(titleCase).join(' · '))}</div>` : '';
+        const origin = a.country_of_origin ? ` · Origin: ${escHtml(a.country_of_origin)}` : '';
+        const imgHtml = img
+          ? `<img src="${img}" alt="${escHtml(name)}" loading="lazy" onerror="this.outerHTML='<div class=\\'no-img\\'>No image</div>'">`
+          : '<div class="no-img">No image</div>';
+        return `
+          <a class="alert-card" href="detail.html?id=${a.id}">
+            ${imgHtml}
+            <div class="card-body">
+              <div class="ref">${escHtml(a.reference)} · ${escHtml(date)}</div>
+              <div class="product-name">${escHtml(name)}</div>
+              ${specific}
+              ${brands}
+              <span class="category-badge">${escHtml(titleCase(a.product_category))}</span>
+              ${risks}
+              <div class="country">${escHtml(a.country || '')}${origin}</div>
+            </div>
+          </a>`;
+      }).join('');
+    }
+
+    function renderPagination(totalPages) {
+      if (totalPages <= 1) { pagEl.innerHTML = ''; return; }
+      const p = state.page;
+      const go = n => { state.page = n; run(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+      pagEl.innerHTML = '';
+
+      const prev = button('‹ Prev', () => go(p - 1)); prev.disabled = p <= 1; pagEl.appendChild(prev);
+      const lo = Math.max(1, p - 2), hi = Math.min(totalPages, p + 2);
+      for (let n = lo; n <= hi; n++) {
+        if (n === p) {
+          const span = document.createElement('span'); span.className = 'current'; span.textContent = n;
+          pagEl.appendChild(span);
+        } else {
+          pagEl.appendChild(button(String(n), () => go(n)));
+        }
+      }
+      const next = button('Next ›', () => go(p + 1)); next.disabled = p >= totalPages; pagEl.appendChild(next);
+    }
+
+    function button(label, onClick) {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.addEventListener('click', onClick);
+      return b;
+    }
+
+    function titleCase(s) {
+      return String(s || '').replace(/_/g, ' ').toLowerCase()
+        .replace(/\b\w/g, c => c.toUpperCase());
     }
 
     function escHtml(s) {
-      return String(s)
+      return String(s ?? '')
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
   </script>
 </body>
