@@ -58,8 +58,11 @@
 
     .empty { color: #888; grid-column: 1 / -1; padding: 40px; text-align: center; }
 
-    footer { max-width: 1100px; margin: 8px auto 32px; padding: 0 16px; font-size: 0.78rem; color: #999; line-height: 1.5; }
-    footer a { color: #777; }
+    .notice {
+      background: #eef2ff; border: 1px solid #dde3f5; border-radius: 8px;
+      padding: 10px 14px; margin-bottom: 16px; font-size: 0.8rem; color: #555; line-height: 1.5;
+    }
+    .notice a { color: #1565c0; }
   </style>
 </head>
 <body>
@@ -72,6 +75,12 @@
   </header>
 
   <main>
+    <div class="notice">
+      Data: <a href="https://ec.europa.eu/safety-gate-alerts/screen/search" target="_blank" rel="noopener">Safety Gate alerts</a>,
+      © European Union, 1995–2026, licensed under
+      <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>.
+      Unofficial mirror — data has been reformatted and re-indexed, and may not include all alerts.
+    </div>
     <div class="search-bar">
       <input type="text" id="q" placeholder="Search products, brands, risks…" autocomplete="off">
       <select id="category"><option value="">All categories</option></select>
@@ -80,11 +89,6 @@
     <div class="alert-grid" id="results"></div>
     <div class="pagination" id="pagination"></div>
   </main>
-
-  <footer>
-    Data from the <a href="https://ec.europa.eu/safety-gate-alerts/screen/search" target="_blank" rel="noopener">EU Safety Gate</a>.
-    This is an unofficial mirror and may not include all alerts.
-  </footer>
 
   <script type="module">
     import MiniSearch from 'https://cdn.jsdelivr.net/npm/minisearch@7.1.0/+esm';
