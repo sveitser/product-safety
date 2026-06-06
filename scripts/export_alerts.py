@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 import argparse
 import base64
+import io
 import json
 import sqlite3
+import urllib.request
 from pathlib import Path
 
 import torch
@@ -14,6 +16,8 @@ DB_PATH = Path("data/safety.db")
 IMAGES_DIR = Path("data/images")
 OUT_DIR = Path("docs/data/alerts")
 MODEL_ID = "openai/clip-vit-base-patch32"
+EU_IMAGE_BASE = "https://ec.europa.eu/safety-gate-alerts/public/api/notification/image"
+USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) product-safety-export"
 
 ALERT_FIELDS = [
     "id",
@@ -56,8 +60,23 @@ def load_alerts(db: Path) -> list[dict]:
     return alerts
 
 
-def encode_photo(path: Path, processor: CLIPProcessor, model: CLIPVisionModelWithProjection) -> str:
-    image = Image.open(path).convert("RGB")
+def load_image_bytes(photo: dict, images_dir: Path) -> bytes:
+    """Local file if present (local dev), else fetch by photo_id from the EU API."""
+    if photo.get("local_path"):
+        local = images_dir / Path(photo["local_path"]).name
+        if local.exists():
+            return local.read_bytes()
+    req = urllib.request.Request(
+        f"{EU_IMAGE_BASE}/{photo['photo_id']}", headers={"User-Agent": USER_AGENT}
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return resp.read()
+
+
+def encode_photo(
+    image_bytes: bytes, processor: CLIPProcessor, model: CLIPVisionModelWithProjection
+) -> str:
+    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     inputs = processor(images=[image], return_tensors="pt")
     with torch.no_grad():
         feats = model(pixel_values=inputs["pixel_values"]).image_embeds
@@ -76,12 +95,10 @@ def write_alert_file(
     photos = []
     for p in alert["photos"]:
         entry = {"photo_id": p["photo_id"], "main": p["main"]}
-        if p["local_path"]:
-            img_path = images_dir / Path(p["local_path"]).name
-            try:
-                entry["embedding"] = encode_photo(img_path, processor, model)
-            except Exception as e:
-                print(f"  [warn] photo {p['photo_id']}: {e}")
+        try:
+            entry["embedding"] = encode_photo(load_image_bytes(p, images_dir), processor, model)
+        except Exception as e:
+            print(f"  [warn] photo {p['photo_id']}: {e}")
         photos.append(entry)
 
     record = {k: v for k, v in alert.items() if k != "photos"}
