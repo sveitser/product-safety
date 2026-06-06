@@ -1,0 +1,60 @@
+name: Daily Scrape
+
+on:
+  schedule:
+    - cron: "0 4 * * *" # 04:00 UTC daily
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-scrape
+  cancel-in-progress: false
+
+env:
+  UV_TORCH_BACKEND: cpu # uv selects CPU-only torch wheels
+
+jobs:
+  scrape:
+    name: Scrape and export
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Cache CLIP model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-clip-vit-base-patch32
+
+      - name: Scrape recent toys alerts
+        run: >
+          uv run --no-project --python 3.12
+          --with httpx --with alembic --with sqlalchemy
+          python scraper/ingest.py --category TOYS
+
+      - name: Export new per-ID alert files
+        run: >
+          uv run --no-project --python 3.12
+          --with torch --with transformers --with pillow
+          python scripts/export_alerts.py
+
+      - name: Commit new alerts
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain docs/data/alerts)" ]; then
+            n=$(git status --porcelain docs/data/alerts | wc -l)
+            git add docs/data/alerts
+            git commit -m "chore: daily scrape — $n new/updated toys alert(s)"
+            git push
+          else
+            echo "No new alerts."
+          fi
