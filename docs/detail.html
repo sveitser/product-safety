@@ -39,6 +39,8 @@
     .risk-desc { font-size: .9rem; line-height: 1.5; }
     .legal { font-size: .85rem; color: #444; line-height: 1.4; }
     .measures { margin: .25rem 0; padding-left: 1.25rem; font-size: .9rem; }
+    .source-link { font-size: .85rem; color: #1565c0; text-decoration: none; }
+    .source-link:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -57,6 +59,7 @@
 
   <script type="module">
     const EU_IMAGE_BASE = 'https://ec.europa.eu/safety-gate-alerts/public/api/notification/image';
+    const EU_DETAIL_BASE = 'https://ec.europa.eu/safety-gate-alerts/screen/webReport/alertDetail';
     const content = document.getElementById('content');
 
     init();
@@ -143,6 +146,7 @@
             ${riskDesc}
             ${legal}
             ${measures}
+            <div><a class="source-link" href="${EU_DETAIL_BASE}/${a.id}?lang=en" target="_blank" rel="noopener">View original on EU Safety Gate ↗</a></div>
           </div>
         </div>`;
     }
