@@ -41,6 +41,11 @@
     .measures { margin: .25rem 0; padding-left: 1.25rem; font-size: .9rem; }
     .source-link { font-size: .85rem; color: #1565c0; text-decoration: none; }
     .source-link:hover { text-decoration: underline; }
+    .notice {
+      background: #eef2ff; border: 1px solid #dde3f5; border-radius: 8px;
+      padding: 10px 14px; margin-bottom: 16px; font-size: 0.8rem; color: #555; line-height: 1.5;
+    }
+    .notice a { color: #1565c0; }
   </style>
 </head>
 <body>
@@ -54,6 +59,12 @@
 
   <main>
     <a class="back" href="index.html">← Back to search</a>
+    <div class="notice">
+      Data: <a href="https://ec.europa.eu/safety-gate-alerts/screen/search" target="_blank" rel="noopener">Safety Gate alerts</a>,
+      © European Union, 1995–2026, licensed under
+      <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>.
+      Unofficial mirror — data has been reformatted and re-indexed, and may not include all alerts.
+    </div>
     <div id="content"></div>
   </main>
 
