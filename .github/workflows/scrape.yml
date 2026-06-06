@@ -41,10 +41,18 @@ jobs:
           python scraper/ingest.py --category TOYS
 
       - name: Export new per-ID alert files
-        run: >
-          uv run --no-project --python 3.12
-          --with torch --with transformers --with pillow
-          python scripts/export_alerts.py
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }} # optional; raises HuggingFace rate limits
+        run: |
+          ok=0
+          for attempt in 1 2 3; do
+            if uv run --no-project --python 3.12 \
+              --with torch --with transformers --with pillow \
+              python scripts/export_alerts.py; then ok=1; break; fi
+            echo "export attempt $attempt failed, retrying in 30s…"
+            sleep 30
+          done
+          [ "$ok" = 1 ]
 
       - name: Commit new alerts
         run: |
