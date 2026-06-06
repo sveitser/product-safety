@@ -32,6 +32,13 @@
           starlette
         ]);
 
+        mlPythonEnv = pkgs.python313.withPackages (ps: with ps; [
+          torch
+          transformers
+          pillow
+          numpy
+        ]);
+
         checks = {
           pre-commit-check = pre-commit-hooks.lib.${system}.run {
             src = ./.;
@@ -55,7 +62,7 @@
               ty = {
                 enable = true;
                 name = "ty";
-                entry = "${pkgs.ty}/bin/ty check --python ${pythonEnv}/bin/python";
+                entry = "${pkgs.ty}/bin/ty check --python ${pythonEnv}/bin/python backend scraper";
                 language = "system";
                 pass_filenames = false;
                 types = [ "python" ];
@@ -74,6 +81,10 @@
       in
       {
         inherit checks;
+
+        devShells.ml = pkgs.mkShell {
+          packages = [ mlPythonEnv ];
+        };
 
         devShells.default = pkgs.mkShell {
           packages = [

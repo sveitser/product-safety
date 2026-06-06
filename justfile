@@ -30,5 +30,13 @@ typecheck *args:
 migrate *args:
     alembic upgrade head {{args}}
 
+# Compute CLIP embeddings for all product photos (needs `nix develop .#ml` deps)
+build-embeddings *args:
+    nix develop .#ml --command python scripts/compute_embeddings.py {{args}}
+
+# Serve the static photo search frontend locally
+serve-frontend:
+    python -m http.server 8080 --directory docs
+
 # Run lint + typecheck + test in sequence (CI pipeline)
 ci: lint typecheck test

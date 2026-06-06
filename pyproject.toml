@@ -35,3 +35,6 @@ exclude_lines = [
 
 [tool.ty.environment]
 python-version = "3.12"
+
+[tool.ty.src]
+exclude = ["scripts"]
