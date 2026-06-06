@@ -7,6 +7,10 @@ on:
       - "docs/**"
       - "scripts/bundle_data.py"
       - ".github/workflows/deploy-pages.yml"
+  workflow_run:
+    # GITHUB_TOKEN-pushed commits don't trigger `push`, so deploy after the scrape completes
+    workflows: ["Daily Scrape"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -22,6 +26,7 @@ jobs:
   deploy:
     name: Deploy
     runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
