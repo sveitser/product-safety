@@ -8,7 +8,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from PIL import Image
-from transformers import CLIPModel, CLIPProcessor
+from transformers import CLIPProcessor, CLIPVisionModelWithProjection
 
 DB_PATH = Path("data/safety.db")
 IMAGES_DIR = Path("data/images")
@@ -35,9 +35,9 @@ def load_photos(db: Path) -> list[dict]:
 def encode_images(
     paths: list[Path],
     processor: CLIPProcessor,
-    model: CLIPModel,
+    model: CLIPVisionModelWithProjection,
     batch_size: int = 32,
-) -> np.ndarray:
+) -> list:
     all_embeddings = []
     for i in range(0, len(paths), batch_size):
         batch_paths = paths[i : i + batch_size]
@@ -56,7 +56,7 @@ def encode_images(
 
         inputs = processor(images=images, return_tensors="pt")
         with torch.no_grad():
-            feats = model.get_image_features(**inputs)
+            feats = model(pixel_values=inputs["pixel_values"]).image_embeds
             feats = F.normalize(feats, p=2, dim=-1)
 
         feat_list = feats.cpu().numpy()
@@ -82,7 +82,7 @@ def main() -> None:
 
     print(f"loading CLIP model {MODEL_ID}")
     processor = CLIPProcessor.from_pretrained(MODEL_ID)
-    model = CLIPModel.from_pretrained(MODEL_ID)
+    model = CLIPVisionModelWithProjection.from_pretrained(MODEL_ID)
     model.eval()
 
     rows = load_photos(args.db)

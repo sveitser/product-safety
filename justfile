@@ -32,7 +32,7 @@ migrate *args:
 
 # Compute CLIP embeddings for all product photos (needs `nix develop .#ml` deps)
 build-embeddings *args:
-    nix develop .#ml --command python scripts/compute_embeddings.py {{args}}
+    nix --extra-experimental-features 'nix-command flakes' develop .#ml --command python scripts/compute_embeddings.py {{args}}
 
 # Serve the static photo search frontend locally
 serve-frontend:
