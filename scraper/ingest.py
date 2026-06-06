@@ -294,13 +294,19 @@ async def run_historical(
     print(f"\nDone. Processed {total_processed} historical alerts.")
 
 
-async def run(category: str = "TOYS", max_pages: int = 999, download_images: bool = True) -> None:
+async def run(
+    category: str = "TOYS",
+    max_pages: int = 999,
+    download_images: bool = True,
+    known_ids: set[int] | None = None,
+) -> None:
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     init_db()
     conn = get_conn()
+    known_ids = known_ids or set()
 
     cat_label = "ALL categories" if category == "ALL" else f"category={category}"
-    print(f"Starting ingestion ({cat_label}, max_pages={max_pages})")
+    print(f"Starting ingestion ({cat_label}, max_pages={max_pages}, known={len(known_ids)})")
 
     async with httpx.AsyncClient(
         headers=HEADERS, timeout=httpx.Timeout(60.0, connect=10.0)
@@ -328,6 +334,9 @@ async def run(category: str = "TOYS", max_pages: int = 999, download_images: boo
 
             for item in content:
                 alert_id = item["id"]
+                if alert_id in known_ids:
+                    continue
+
                 await asyncio.sleep(REQUEST_DELAY)
 
                 detail = await fetch_detail(client, alert_id)
@@ -385,6 +394,12 @@ if __name__ == "__main__":
     parser.add_argument("--max-pages", type=int, default=999, help="Max pages to fetch")
     parser.add_argument("--no-images", action="store_true", help="Skip image downloads")
     parser.add_argument(
+        "--known-dir",
+        type=Path,
+        default=None,
+        help="Dir of {id}.json files; skip alerts already present (no detail fetch).",
+    )
+    parser.add_argument(
         "--historical",
         action="store_true",
         help=(
@@ -412,10 +427,14 @@ if __name__ == "__main__":
         )
     else:
         category = "ALL" if args.all_categories else args.category
+        known_ids = (
+            {int(p.stem) for p in args.known_dir.glob("*.json")} if args.known_dir else set()
+        )
         asyncio.run(
             run(
                 category=category,
                 max_pages=args.max_pages,
                 download_images=not args.no_images,
+                known_ids=known_ids,
             )
         )

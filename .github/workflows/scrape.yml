@@ -44,7 +44,8 @@ jobs:
             echo "::group::scrape $c"
             uv run --no-project --python 3.12 \
               --with httpx --with alembic --with sqlalchemy \
-              python scraper/ingest.py --category "$c" --no-images --max-pages 1
+              python scraper/ingest.py --category "$c" --no-images --max-pages 1 \
+                --known-dir docs/data/alerts
             echo "::endgroup::"
           done
 
