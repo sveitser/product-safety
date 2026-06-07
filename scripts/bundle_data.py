@@ -7,7 +7,7 @@ from pathlib import Path
 SRC_DIR = Path("docs/data/alerts")
 OUT_DIR = Path("docs/data")
 EU_IMAGE_BASE = "https://ec.europa.eu/safety-gate-alerts/public/api/notification/image"
-DIM = 512
+DIM = 768
 
 
 def read_alert_files(src: Path) -> list[dict]:

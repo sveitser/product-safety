@@ -34,6 +34,7 @@
 
         mlPythonEnv = pkgs.python313.withPackages (ps: with ps; [
           torch
+          torchvision
           transformers
           pillow
           numpy

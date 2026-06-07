@@ -197,13 +197,13 @@
     // ---- load model + data in parallel ----
     async function loadAll() {
       const CDN = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
-      const { CLIPVisionModelWithProjection, AutoProcessor, RawImage: RawImageCls, env } =
+      const { AutoModel, AutoProcessor, RawImage: RawImageCls, env } =
         await import(`${CDN}`);
 
       RawImage = RawImageCls;
       env.allowLocalModels = false;
 
-      const MODEL = 'Xenova/clip-vit-base-patch32';
+      const MODEL = 'Xenova/dinov2-base';
 
       const modelProgress = (info) => {
         if (info.status === 'progress' && info.total) {
@@ -213,7 +213,7 @@
       };
 
       const [_model, _proc] = await Promise.all([
-        CLIPVisionModelWithProjection.from_pretrained(MODEL, { dtype: 'fp16', progress_callback: modelProgress }),
+        AutoModel.from_pretrained(MODEL, { dtype: 'fp16', progress_callback: modelProgress }),
         AutoProcessor.from_pretrained(MODEL),
       ]);
       model = _model;
@@ -248,8 +248,15 @@
 
       const image = await RawImage.fromBlob(file);
       const inputs = await processor(image);
-      const { image_embeds } = await model(inputs);
-      const raw = image_embeds.data; // Float32Array(512)
+      const out = await model(inputs);
+      // DINOv2 pooler_output == CLS token of last_hidden_state; fall back if not exported
+      let raw;
+      if (out.pooler_output) {
+        raw = out.pooler_output.data; // Float32Array(768)
+      } else {
+        const dim = out.last_hidden_state.dims[2];
+        raw = out.last_hidden_state.data.slice(0, dim); // first (CLS) token
+      }
       const queryEmb = l2normalize(raw);
 
       const N = metadata.count;
@@ -262,10 +269,17 @@
         scores[i] = dot;
       }
 
-      const top = Array.from({ length: N }, (_, i) => i)
-        .sort((a, b) => scores[b] - scores[a])
-        .slice(0, 10)
-        .map(i => ({ ...metadata.items[i], score: scores[i] }));
+      // rank photos by score, then keep the best photo per alert (dedupe)
+      const ranked = Array.from({ length: N }, (_, i) => i).sort((a, b) => scores[b] - scores[a]);
+      const seen = new Set();
+      const top = [];
+      for (const i of ranked) {
+        const item = metadata.items[i];
+        if (seen.has(item.alert_id)) continue;
+        seen.add(item.alert_id);
+        top.push({ ...item, score: scores[i] });
+        if (top.length >= 10) break;
+      }
 
       showResults(top);
       setProgress(100, 'Done');

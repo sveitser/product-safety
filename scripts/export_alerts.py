@@ -10,12 +10,12 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
 from PIL import Image
-from transformers import CLIPProcessor, CLIPVisionModelWithProjection
+from transformers import AutoImageProcessor, AutoModel
 
 DB_PATH = Path("data/safety.db")
 IMAGES_DIR = Path("data/images")
 OUT_DIR = Path("docs/data/alerts")
-MODEL_ID = "openai/clip-vit-base-patch32"
+MODEL_ID = "facebook/dinov2-base"
 EU_IMAGE_BASE = "https://ec.europa.eu/safety-gate-alerts/public/api/notification/image"
 USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) product-safety-export"
 
@@ -73,25 +73,17 @@ def load_image_bytes(photo: dict, images_dir: Path) -> bytes:
         return resp.read()
 
 
-def encode_photo(
-    image_bytes: bytes, processor: CLIPProcessor, model: CLIPVisionModelWithProjection
-) -> str:
+def encode_photo(image_bytes: bytes, processor, model) -> str:
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     inputs = processor(images=[image], return_tensors="pt")
     with torch.no_grad():
-        feats = model(pixel_values=inputs["pixel_values"]).image_embeds
+        feats = model(**inputs).pooler_output
         feats = F.normalize(feats, p=2, dim=-1)
     arr = feats[0].cpu().numpy().astype("<f4")
     return base64.b64encode(arr.tobytes()).decode()
 
 
-def write_alert_file(
-    out_dir: Path,
-    alert: dict,
-    images_dir: Path,
-    processor: CLIPProcessor,
-    model: CLIPVisionModelWithProjection,
-) -> None:
+def write_alert_file(out_dir: Path, alert: dict, images_dir: Path, processor, model) -> None:
     photos = []
     for p in alert["photos"]:
         entry = {"photo_id": p["photo_id"], "main": p["main"]}
@@ -122,9 +114,9 @@ def main() -> None:
     if not todo:
         return
 
-    print(f"loading CLIP model {MODEL_ID}")
-    processor = CLIPProcessor.from_pretrained(MODEL_ID)
-    model = CLIPVisionModelWithProjection.from_pretrained(MODEL_ID)
+    print(f"loading model {MODEL_ID}")
+    processor = AutoImageProcessor.from_pretrained(MODEL_ID)
+    model = AutoModel.from_pretrained(MODEL_ID)
     model.eval()
 
     for i, alert in enumerate(todo, 1):
