@@ -17,6 +17,7 @@
 
     #intro { text-align: center; }
     #intro p { color: #555; margin-bottom: 20px; line-height: 1.5; }
+    .model-note { font-size: 0.85rem; color: #777; max-width: 520px; margin: 0 auto 20px; }
     .btn-primary {
       background: #1a1a2e; color: #fff; border: none; border-radius: 8px;
       padding: 12px 28px; font-size: 1rem; cursor: pointer;
@@ -101,7 +102,10 @@
     </div>
     <section id="intro">
       <p>Snap or upload a product photo to find visually similar items flagged in the EU Safety Gate.</p>
-      <button class="btn-primary" id="start-btn">Start photo search</button>
+      <p class="model-note">First use downloads the <strong>DINOv2-base</strong> image model
+        (~165&nbsp;MB) and runs it entirely in your browser. It's cached afterward, so this
+        happens only once. Nothing you upload leaves your device.</p>
+      <button class="btn-primary" id="start-btn">Download model (~165 MB) &amp; start</button>
     </section>
 
     <section id="search-panel">
