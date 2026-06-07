@@ -158,12 +158,26 @@
     const resultsHeading = document.getElementById('results-heading');
     const resultsGrid = document.getElementById('results');
 
-    // ---- start button: lazy load everything ----
-    startBtn.addEventListener('click', () => {
+    // ---- start: lazy load everything (auto-skips the prompt if model is cached) ----
+    function startSearch() {
       intro.style.display = 'none';
       panel.style.display = 'block';
       loadAll();
-    });
+    }
+    startBtn.addEventListener('click', startSearch);
+
+    // If the model is already in the browser cache, skip the download prompt entirely.
+    async function modelCached() {
+      if (!('caches' in window)) return false;
+      try {
+        for (const name of await caches.keys()) {
+          const reqs = await (await caches.open(name)).keys();
+          if (reqs.some(r => /dinov2-base.*model_fp16\.onnx/.test(r.url))) return true;
+        }
+      } catch { /* ignore */ }
+      return false;
+    }
+    modelCached().then(cached => { if (cached) startSearch(); });
 
     // ---- drop zone click ----
     dropZone.addEventListener('click', () => {
