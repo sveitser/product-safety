@@ -166,8 +166,10 @@
     }
     startBtn.addEventListener('click', startSearch);
 
-    // If the model is already in the browser cache, skip the download prompt entirely.
+    // If the model was loaded before (flag set on first successful load, or present in
+    // Cache Storage), skip the download prompt and go straight to search.
     async function modelCached() {
+      try { if (localStorage.getItem('dinov2-cached') === '1') return true; } catch { /* ignore */ }
       if (!('caches' in window)) return false;
       try {
         for (const name of await caches.keys()) {
@@ -236,6 +238,7 @@
       ]);
       model = _model;
       processor = _proc;
+      try { localStorage.setItem('dinov2-cached', '1'); } catch { /* ignore */ }
       modelReady = true;
       onReady();
 
