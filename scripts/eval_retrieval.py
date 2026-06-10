@@ -212,9 +212,18 @@ def embed_with_cache(
         t0 = time.monotonic()
         for i in range(0, len(missing), BATCH_SIZE):
             chunk = missing[i : i + BATCH_SIZE]
-            images = [loader(n) for n in chunk]
-            feats = encoder.features(images)
-            for j, name in enumerate(chunk):
+            loaded = []
+            valid_names = []
+            for n in chunk:
+                try:
+                    loaded.append(loader(n))
+                    valid_names.append(n)
+                except Exception as e:
+                    print(f"  [skip] {n}: {e}")
+            if not loaded:
+                continue
+            feats = encoder.features(loaded)
+            for j, name in enumerate(valid_names):
                 views = {k: v[j] for k, v in feats.items()}
                 np.savez(cdir / f"{name}.npz", **views)
                 out[name] = views
@@ -297,8 +306,11 @@ def run(args) -> None:
     # gallery (clean only)
     gallery_names = [str(pid) for pid in sorted(gallery_ids)]
     feats = embed_with_cache([(n, None) for n in gallery_names], args.spec, args.image_size, loader)
-    gallery_mat = np.stack([Encoder.compose(feats[n], spec.pooling) for n in gallery_names])
-    gallery_alerts = np.array([photo_meta[int(n)]["alert_id"] for n in gallery_names])
+    valid_gallery = [n for n in gallery_names if n in feats]
+    if len(valid_gallery) < len(gallery_names):
+        print(f"  [warn] {len(gallery_names) - len(valid_gallery)} gallery photos skipped")
+    gallery_mat = np.stack([Encoder.compose(feats[n], spec.pooling) for n in valid_gallery])
+    gallery_alerts = np.array([photo_meta[int(n)]["alert_id"] for n in valid_gallery])
 
     # queries: clean + one variant per profile, each with optional TTA crops
     variants = [""] + [f".{p}" for p in PROFILES]
@@ -311,7 +323,11 @@ def run(args) -> None:
     for pid in sorted(query_ids):
         true_alert = photo_meta[pid]["alert_id"]
         for v in variants:
-            embs = [Encoder.compose(qfeats[f"{pid}{v}{t}"], spec.pooling) for t in tta_suffixes]
+            keys = [f"{pid}{v}{t}" for t in tta_suffixes]
+            available = [k for k in keys if k in qfeats]
+            if not available:
+                continue
+            embs = [Encoder.compose(qfeats[k], spec.pooling) for k in available]
             q = l2_normalize(np.mean(embs, axis=0)) if len(embs) > 1 else embs[0]
             r = alert_rank(gallery_mat @ q, gallery_alerts, true_alert)
             ranks["clean" if v == "" else v[1:]].append(r)
