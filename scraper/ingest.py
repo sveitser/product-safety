@@ -152,6 +152,10 @@ async def fetch_detail(client: httpx.AsyncClient, alert_id: int) -> dict | None:
 
 
 async def fetch_page(client: httpx.AsyncClient, page: int, category: str) -> dict | None:
+    # NOTE: the mostRecent/ endpoint serves a single global feed ordered by date
+    # and, in practice, ignores the productCategory filter (every category returns
+    # the same results). We still send it for forward-compatibility, but callers
+    # that want full coverage should use category="ALL" and filter downstream.
     body: dict = {"language": "en", "page": str(page)}
     if category and category != "ALL":
         body["productCategory"] = category

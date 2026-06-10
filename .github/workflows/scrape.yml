@@ -34,20 +34,16 @@ jobs:
           path: ~/.cache/huggingface
           key: hf-clip-vit-base-patch32
 
-      - name: Scrape recent consumer-category alerts
+      - name: Scrape most-recent alerts (all categories)
+        # The mostRecent/ endpoint returns a single global feed ordered by date
+        # and ignores any productCategory filter, so we fetch every page once and
+        # let --known-dir skip alerts we already have. Category filtering happens
+        # client-side in the web app, so the scraper just needs full recent coverage.
         run: |
-          for c in TOYS ELECTRICAL_APPLIANCES COSMETICS PROTECTIVE_EQUIPMENT \
-                   CHILDCARE_ARTICLES HOBBY_SPORTS_EQUIPMENT CLOTHING_TEXTILES \
-                   JEWELLERY CHEMICAL_PRODUCTS LIGHTING_EQUIPMENT LIGHTING_CHAINS \
-                   FURNITURE DECORATIVE_ARTICLES GADGETS KITCHEN_COOKING_ACCESSORIES \
-                   HAND_TOOLS LASER_POINTERS PYROTECHNIC_ARTICLES GAS_APPLIANCES OTHER; do
-            echo "::group::scrape $c"
-            uv run --no-project --python 3.12 \
-              --with httpx --with alembic --with sqlalchemy \
-              python scraper/ingest.py --category "$c" --no-images --max-pages 1 \
-                --known-dir docs/data/alerts
-            echo "::endgroup::"
-          done
+          uv run --no-project --python 3.12 \
+            --with httpx --with alembic --with sqlalchemy \
+            python scraper/ingest.py --all-categories --no-images --max-pages 6 \
+              --known-dir docs/data/alerts
 
       - name: Export new per-ID alert files
         env:
