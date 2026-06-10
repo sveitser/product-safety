@@ -130,13 +130,16 @@ class Encoder:
         inputs = self.processor(images=images, return_tensors="pt")
         with torch.no_grad():
             if self.spec.pooling == "projected":
-                out = self.model(**inputs)
-                # SiglipVisionModel returns BaseModelOutputWithPooling; pooler_output
-                # is the CLS token (already in the projection space for SigLIP).
-                if hasattr(out, "pooler_output") and out.pooler_output is not None:
-                    feats = out.pooler_output
-                else:
-                    feats = out.last_hidden_state[:, 0]
+                # AutoModel may load the full multimodal model (e.g. SiglipModel with
+                # vision + text towers); call only the vision sub-model so pixel_values
+                # alone is sufficient.
+                vision = getattr(self.model, "vision_model", self.model)
+                out = vision(pixel_values=inputs["pixel_values"])
+                feats = (
+                    out.pooler_output
+                    if (hasattr(out, "pooler_output") and out.pooler_output is not None)
+                    else out.last_hidden_state[:, 0]
+                )
                 return {"emb": l2_normalize(feats.cpu().numpy().astype("<f4"))}
             out = self.model(**inputs)
         lh = out.last_hidden_state
