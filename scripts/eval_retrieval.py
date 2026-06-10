@@ -133,7 +133,11 @@ def _perspective(img: Image.Image, rng: random.Random) -> Image.Image:
         a.append([0, 0, 0, dx, dy, 1, -sy * dx, -sy * dy])
         b.extend([sx, sy])
     coeffs = np.linalg.solve(np.array(a, dtype="float64"), np.array(b, dtype="float64"))
-    return img.transform((w, h), Image.PERSPECTIVE, tuple(coeffs), Image.BICUBIC)
+    # fill the out-of-frame wedges with the mean edge color, not black
+    arr = np.asarray(img)
+    edges = np.concatenate([arr[0], arr[-1], arr[:, 0], arr[:, -1]])
+    fill = tuple(int(c) for c in edges.mean(axis=0))
+    return img.transform((w, h), Image.PERSPECTIVE, tuple(coeffs), Image.BICUBIC, fillcolor=fill)
 
 
 def _lighting(img: Image.Image, rng: random.Random) -> Image.Image:
@@ -165,8 +169,9 @@ def augment(img: Image.Image, profile: str, photo_id: int, seed: int) -> Image.I
         img, center = _composite_clutter(img, rng)
         img = _lighting(img, rng)
     if profile in ("framing", "phone"):
-        img = _random_crop(img, rng, center)
+        # perspective before crop so the crop trims the warp's border wedges
         img = _perspective(img, rng)
+        img = _random_crop(img, rng, center)
         img = img.filter(ImageFilter.GaussianBlur(rng.uniform(0.5, 2.0)))
     return _phone_pipeline(img, rng)
 
