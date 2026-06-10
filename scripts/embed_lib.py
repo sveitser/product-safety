@@ -130,7 +130,13 @@ class Encoder:
         inputs = self.processor(images=images, return_tensors="pt")
         with torch.no_grad():
             if self.spec.pooling == "projected":
-                feats = self.model.get_image_features(**inputs)
+                out = self.model(**inputs)
+                # SiglipVisionModel returns BaseModelOutputWithPooling; pooler_output
+                # is the CLS token (already in the projection space for SigLIP).
+                if hasattr(out, "pooler_output") and out.pooler_output is not None:
+                    feats = out.pooler_output
+                else:
+                    feats = out.last_hidden_state[:, 0]
                 return {"emb": l2_normalize(feats.cpu().numpy().astype("<f4"))}
             out = self.model(**inputs)
         lh = out.last_hidden_state
