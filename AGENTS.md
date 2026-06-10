@@ -34,7 +34,7 @@ flake.nix         Nix development environment
 - **Web framework**: FastAPI with Jinja2 + HTMX (server-rendered, minimal JS)
 - **Database**: SQLite via sqlite-utils / SQLAlchemy Core (easy to swap later)
 - **Full-text search**: SQLite FTS5
-- **Image search**: planned — embedding-based (CLIP or similar), out of scope v1
+- **Image search**: client-side embedding match (SigLIP 2 base, see `docs/EVAL.md` and `scripts/embed_lib.py`)
 
 ### Scraper strategy
 - Source: Safety Gate public API (`https://ec.europa.eu/safety-gate-alerts/`)

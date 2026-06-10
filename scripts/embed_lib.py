@@ -21,8 +21,9 @@ USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) product-safety-export"
 FETCH_INTERVAL = 1.0  # seconds between EU API requests (be polite: 1 req/s)
 
 # The spec used for production export. Changing this requires a full
-# --force re-export plus the matching frontend change (see docs/photo.html).
-ACTIVE_SPEC = "dinov2-base-cls"
+# --force re-export plus the matching frontend change (see docs/js/embed.js).
+# Chosen via scripts/eval_retrieval.py — see docs/EVAL.md.
+ACTIVE_SPEC = "siglip2-b16-256"
 
 
 @dataclass(frozen=True)

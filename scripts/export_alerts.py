@@ -52,6 +52,22 @@ def load_alerts(db: Path) -> list[dict]:
     return alerts
 
 
+def load_alerts_from_files(src: Path) -> list[dict]:
+    """Rebuild alert records from previously exported per-alert JSONs.
+
+    Enables a full re-export (e.g. after a model change) without the scraper
+    DB: all alert fields are carried over and embeddings are recomputed.
+    """
+    alerts = []
+    for f in sorted(src.glob("*.json"), key=lambda p: int(p.stem)):
+        a = json.loads(f.read_text())
+        a.pop("embedding_model", None)
+        a.pop("embedding_dim", None)
+        a["photos"] = [{"photo_id": p["photo_id"], "main": p["main"]} for p in a["photos"]]
+        alerts.append(a)
+    return alerts
+
+
 def encode_photo(image_bytes: bytes, encoder: Encoder) -> str:
     arr = encoder.encode([open_image(image_bytes)])[0]
     return base64.b64encode(arr.tobytes()).decode()
@@ -81,11 +97,16 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=OUT_DIR)
     parser.add_argument("--spec", default=ACTIVE_SPEC, choices=sorted(MODEL_SPECS))
     parser.add_argument("--force", action="store_true", help="recompute existing alert files")
+    parser.add_argument(
+        "--from-files",
+        action="store_true",
+        help="re-export from existing per-alert JSONs instead of the scraper DB",
+    )
     args = parser.parse_args()
 
     args.out.mkdir(parents=True, exist_ok=True)
 
-    alerts = load_alerts(args.db)
+    alerts = load_alerts_from_files(args.out) if args.from_files else load_alerts(args.db)
     todo = [a for a in alerts if args.force or not (args.out / f"{a['id']}.json").exists()]
     print(f"{len(alerts)} alerts in DB, {len(todo)} to export")
     if not todo:

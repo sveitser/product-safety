@@ -102,10 +102,10 @@
     </div>
     <section id="intro">
       <p>Snap or upload a product photo to find visually similar items flagged in the EU Safety Gate.</p>
-      <p class="model-note">First use downloads the <strong>DINOv2-base</strong> image model
-        (~165&nbsp;MB) and runs it entirely in your browser. It's cached afterward, so this
+      <p class="model-note">First use downloads the <strong>SigLIP&nbsp;2</strong> image model
+        (~177&nbsp;MB) and runs it entirely in your browser. It's cached afterward, so this
         happens only once. Nothing you upload leaves your device.</p>
-      <button class="btn-primary" id="start-btn">Download model (~165 MB) &amp; start</button>
+      <button class="btn-primary" id="start-btn">Download model (~177 MB) &amp; start</button>
     </section>
 
     <section id="search-panel">
@@ -133,15 +133,16 @@
   </main>
 
   <script type="module">
+    import { MODEL_VERSION, loadModel, embedQuery, modelFileRegex } from './js/embed.js';
+
     // ---- state ----
-    let model = null;
-    let processor = null;
-    let embeddings = null; // Float32Array (N * 512)
-    let metadata = null;   // { count, dim, items[] }
-    let RawImage = null;
+    let embeddings = null; // Float32Array (N * dim)
+    let metadata = null;   // { count, dim, model_version, items[] }
     let modelReady = false;
     let dataReady = false;
     let pendingFile = null;
+
+    const CACHE_FLAG = `model-cached:${MODEL_VERSION}`;
 
     // ---- dom refs ----
     const startBtn = document.getElementById('start-btn');
@@ -169,12 +170,13 @@
     // If the model was loaded before (flag set on first successful load, or present in
     // Cache Storage), skip the download prompt and go straight to search.
     async function modelCached() {
-      try { if (localStorage.getItem('dinov2-cached') === '1') return true; } catch { /* ignore */ }
+      try { if (localStorage.getItem(CACHE_FLAG) === '1') return true; } catch { /* ignore */ }
       if (!('caches' in window)) return false;
       try {
+        const re = modelFileRegex();
         for (const name of await caches.keys()) {
           const reqs = await (await caches.open(name)).keys();
-          if (reqs.some(r => /dinov2-base.*model_fp16\.onnx/.test(r.url))) return true;
+          if (reqs.some(r => re.test(r.url))) return true;
         }
       } catch { /* ignore */ }
       return false;
@@ -204,7 +206,7 @@
 
     function onReady() {
       if (!(modelReady && dataReady)) return;
-      setProgress(100, `Ready — ${metadata.count} products indexed`);
+      setProgress(100, `Ready — ${metadata.count} product photos indexed`);
       dropZone.classList.remove('loading');
       dzLabel.textContent = 'Tap to take a photo or drag an image here';
       fileInput.disabled = false;
@@ -216,15 +218,6 @@
 
     // ---- load model + data in parallel ----
     async function loadAll() {
-      const CDN = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
-      const { AutoModel, AutoProcessor, RawImage: RawImageCls, env } =
-        await import(`${CDN}`);
-
-      RawImage = RawImageCls;
-      env.allowLocalModels = false;
-
-      const MODEL = 'Xenova/dinov2-base';
-
       const modelProgress = (info) => {
         if (info.status === 'progress' && info.total) {
           const pct = (info.loaded / info.total) * 100;
@@ -232,18 +225,13 @@
         }
       };
 
-      const [_model, _proc] = await Promise.all([
-        AutoModel.from_pretrained(MODEL, { dtype: 'fp16', progress_callback: modelProgress }),
-        AutoProcessor.from_pretrained(MODEL),
-      ]);
-      model = _model;
-      processor = _proc;
-      try { localStorage.setItem('dinov2-cached', '1'); } catch { /* ignore */ }
-      modelReady = true;
-      onReady();
+      const modelPromise = loadModel(modelProgress).then(() => {
+        try { localStorage.setItem(CACHE_FLAG, '1'); } catch { /* ignore */ }
+        modelReady = true;
+        onReady();
+      });
 
-      // load embeddings + metadata
-      setProgress(85, 'Loading product database…');
+      setProgress(5, 'Loading product database…');
       const [embRes, metaRes] = await Promise.all([
         fetch('data/embeddings.bin'),
         fetch('data/metadata.json'),
@@ -254,8 +242,16 @@
       }
       embeddings = new Float32Array(await embRes.arrayBuffer());
       metadata = await metaRes.json();
+      if (metadata.model_version !== MODEL_VERSION) {
+        setProgress(0,
+          `Error: index was built with model "${metadata.model_version}" but this page uses ` +
+          `"${MODEL_VERSION}". The database is being rebuilt — please try again later.`);
+        return;
+      }
       dataReady = true;
       onReady();
+
+      await modelPromise;
     }
 
     // ---- encode + search ----
@@ -267,18 +263,7 @@
       setProgress(0, 'Analyzing photo…');
       resultsSection.style.display = 'none';
 
-      const image = await RawImage.fromBlob(file);
-      const inputs = await processor(image);
-      const out = await model(inputs);
-      // DINOv2 pooler_output == CLS token of last_hidden_state; fall back if not exported
-      let raw;
-      if (out.pooler_output) {
-        raw = out.pooler_output.data; // Float32Array(768)
-      } else {
-        const dim = out.last_hidden_state.dims[2];
-        raw = out.last_hidden_state.data.slice(0, dim); // first (CLS) token
-      }
-      const queryEmb = l2normalize(raw);
+      const queryEmb = await embedQuery(file);
 
       const N = metadata.count;
       const DIM = metadata.dim;
@@ -304,16 +289,6 @@
 
       showResults(top);
       setProgress(100, 'Done');
-    }
-
-    function l2normalize(arr) {
-      let norm = 0;
-      for (const v of arr) norm += v * v;
-      norm = Math.sqrt(norm);
-      if (norm < 1e-12) return arr;
-      const out = new Float32Array(arr.length);
-      for (let i = 0; i < arr.length; i++) out[i] = arr[i] / norm;
-      return out;
     }
 
     function showResults(items) {
