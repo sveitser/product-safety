@@ -30,9 +30,13 @@ typecheck *args:
 migrate *args:
     alembic upgrade head {{args}}
 
-# Export per-ID alert files with CLIP embeddings (needs `nix develop .#ml` deps)
+# Export per-ID alert files with image embeddings (needs `nix develop .#ml` deps)
 export-alerts *args:
     nix --extra-experimental-features 'nix-command flakes' develop .#ml --command python scripts/export_alerts.py {{args}}
+
+# Evaluate retrieval quality of a model spec (needs `nix develop .#ml` deps)
+eval-retrieval *args:
+    nix --extra-experimental-features 'nix-command flakes' develop .#ml --command python scripts/eval_retrieval.py {{args}}
 
 # Bundle per-ID alert files into browser artifacts (stdlib only)
 bundle-data *args:
