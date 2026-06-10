@@ -69,6 +69,8 @@ jobs:
             typer \
             alembic \
             sqlalchemy \
+            pytest \
+            pytest-asyncio \
             ty
 
       - name: Type check (ty)
