@@ -2,12 +2,12 @@
 import argparse
 import base64
 import json
+from collections import Counter
 from pathlib import Path
 
 SRC_DIR = Path("docs/data/alerts")
 OUT_DIR = Path("docs/data")
 EU_IMAGE_BASE = "https://ec.europa.eu/safety-gate-alerts/public/api/notification/image"
-DIM = 768
 
 
 def read_alert_files(src: Path) -> list[dict]:
@@ -21,14 +21,35 @@ def build_bundle(alerts: list[dict]) -> dict:
     for a in alerts:
         if a.get("product_category"):
             categories.add(a["product_category"])
-        item = {k: v for k, v in a.items() if k != "photos"}
+        item = {
+            k: v for k, v in a.items() if k not in ("photos", "embedding_model", "embedding_dim")
+        }
         item["photos"] = [{"photo_id": p["photo_id"], "main": p["main"]} for p in a["photos"]]
         items.append(item)
     items.sort(key=lambda x: x.get("publication_date") or "", reverse=True)
     return {"count": len(items), "categories": sorted(categories), "items": items}
 
 
+def embedding_version(alerts: list[dict]) -> tuple[str, int]:
+    """Model version + dim shared by all alert files; fail hard on a mix.
+
+    A mixed bundle (partial re-export) would silently corrupt similarity
+    scores, so refuse to build one.
+    """
+    versions = Counter(
+        (a.get("embedding_model") or "unknown", a.get("embedding_dim") or 768)
+        for a in alerts
+        if any("embedding" in p for p in a["photos"])
+    )
+    if len(versions) > 1:
+        detail = ", ".join(f"{model}/{dim}: {n} alerts" for (model, dim), n in versions.items())
+        raise SystemExit(f"mixed embedding versions, re-export with --force first ({detail})")
+    (model, dim), _ = versions.most_common(1)[0]
+    return model, dim
+
+
 def build_embeddings(alerts: list[dict]) -> tuple[bytes, dict]:
+    model, dim = embedding_version(alerts)
     blob = bytearray()
     meta = []
     for a in alerts:
@@ -36,7 +57,7 @@ def build_embeddings(alerts: list[dict]) -> tuple[bytes, dict]:
             if "embedding" not in p:
                 continue
             raw = base64.b64decode(p["embedding"])
-            if len(raw) != DIM * 4:
+            if len(raw) != dim * 4:
                 print(f"  [warn] photo {p['photo_id']}: bad embedding length {len(raw)}")
                 continue
             meta.append(
@@ -51,7 +72,13 @@ def build_embeddings(alerts: list[dict]) -> tuple[bytes, dict]:
                 }
             )
             blob.extend(raw)
-    return bytes(blob), {"count": len(meta), "dim": DIM, "items": meta}
+    return bytes(blob), {
+        "count": len(meta),
+        "dim": dim,
+        "model_version": model,
+        "dtype": "float32",
+        "items": meta,
+    }
 
 
 def main() -> None:
@@ -72,7 +99,10 @@ def main() -> None:
     blob, meta = build_embeddings(alerts)
     (args.out / "embeddings.bin").write_bytes(blob)
     (args.out / "metadata.json").write_text(json.dumps(meta))
-    print(f"saved embeddings.bin + metadata.json ({meta['count']} photos, {len(blob) // 1024} KB)")
+    print(
+        f"saved embeddings.bin + metadata.json "
+        f"({meta['count']} photos, {meta['model_version']}/{meta['dim']}d, {len(blob) // 1024} KB)"
+    )
 
 
 if __name__ == "__main__":

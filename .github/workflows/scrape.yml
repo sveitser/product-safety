@@ -28,11 +28,11 @@ jobs:
           python-version: "3.12"
           enable-cache: true
 
-      - name: Cache CLIP model
+      - name: Cache embedding model
         uses: actions/cache@v4
         with:
           path: ~/.cache/huggingface
-          key: hf-clip-vit-base-patch32
+          key: hf-siglip2-base-patch16-256
 
       - name: Scrape most-recent alerts (all categories)
         # The mostRecent/ endpoint returns a single global feed ordered by date
@@ -52,7 +52,7 @@ jobs:
           ok=0
           for attempt in 1 2 3; do
             if uv run --no-project --python 3.12 \
-              --with torch --with torchvision --with transformers --with pillow \
+              --with torch --with torchvision --with transformers --with pillow --with numpy \
               python scripts/export_alerts.py; then ok=1; break; fi
             echo "export attempt $attempt failed, retrying in 30s…"
             sleep 30

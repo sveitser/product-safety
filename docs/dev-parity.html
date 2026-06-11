@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Embedding Parity Check (dev)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 760px; margin: 32px auto; padding: 0 16px; }
+    #drop { border: 2px dashed #999; border-radius: 8px; padding: 32px; text-align: center; margin: 16px 0; }
+    textarea { width: 100%; height: 200px; font-family: monospace; font-size: 11px; }
+    #log { font-family: monospace; font-size: 12px; white-space: pre-wrap; color: #333; }
+  </style>
+</head>
+<body>
+  <h1>Embedding parity check</h1>
+  <p>Dev page — verifies that browser embeddings match Python (<code>scripts/check_parity.py</code>).
+  Drop alert photos named <code>&lt;photo_id&gt;.jpg</code> (e.g. from <code>data/images/</code>).
+  Embeds each with the production pipeline (<code>docs/js/embed.js</code>, no TTA) and dumps a JSON
+  blob to compare with <code>python scripts/check_parity.py compare &lt;file&gt;</code>.</p>
+  <div id="log">loading model…</div>
+  <div id="drop">drop images here (or click) <input type="file" id="file" multiple accept="image/*" style="display:none"></div>
+  <textarea id="out" placeholder="JSON dump appears here"></textarea>
+
+  <script type="module">
+    import { MODEL_VERSION, loadModel, embedImage } from './js/embed.js';
+
+    const log = document.getElementById('log');
+    const drop = document.getElementById('drop');
+    const fileInput = document.getElementById('file');
+    const out = document.getElementById('out');
+    const dump = {};
+
+    await loadModel(info => {
+      if (info.status === 'progress' && info.total)
+        log.textContent = `loading model: ${Math.round(100 * info.loaded / info.total)}%`;
+    });
+    log.textContent = `model loaded (${MODEL_VERSION}) — drop images`;
+
+    function b64(vec) {
+      let s = '';
+      const bytes = new Uint8Array(vec.buffer);
+      for (let i = 0; i < bytes.length; i += 8192)
+        s += String.fromCharCode(...bytes.subarray(i, i + 8192));
+      return btoa(s);
+    }
+
+    async function handle(files) {
+      for (const f of files) {
+        const key = f.name.replace(/\.[^.]+$/, '');
+        const t0 = performance.now();
+        const vec = await embedImage(f);
+        dump[key] = b64(vec);
+        log.textContent += `\n${key}: dim=${vec.length} (${Math.round(performance.now() - t0)} ms)`;
+      }
+      out.value = JSON.stringify(dump);
+    }
+    drop.addEventListener('click', () => fileInput.click());
+    drop.addEventListener('dragover', e => e.preventDefault());
+    drop.addEventListener('drop', e => { e.preventDefault(); handle(e.dataTransfer.files); });
+    fileInput.addEventListener('change', e => handle(e.target.files));
+  </script>
+</body>
+</html>

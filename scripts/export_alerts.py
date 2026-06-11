@@ -1,23 +1,15 @@
 #!/usr/bin/env python3
 import argparse
 import base64
-import io
 import json
 import sqlite3
-import urllib.request
 from pathlib import Path
 
-import torch
-import torch.nn.functional as F
-from PIL import Image
-from transformers import AutoImageProcessor, AutoModel
+from embed_lib import ACTIVE_SPEC, MODEL_SPECS, Encoder, load_image_bytes, open_image
 
 DB_PATH = Path("data/safety.db")
 IMAGES_DIR = Path("data/images")
 OUT_DIR = Path("docs/data/alerts")
-MODEL_ID = "facebook/dinov2-base"
-EU_IMAGE_BASE = "https://ec.europa.eu/safety-gate-alerts/public/api/notification/image"
-USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) product-safety-export"
 
 ALERT_FIELDS = [
     "id",
@@ -60,40 +52,40 @@ def load_alerts(db: Path) -> list[dict]:
     return alerts
 
 
-def load_image_bytes(photo: dict, images_dir: Path) -> bytes:
-    """Local file if present (local dev), else fetch by photo_id from the EU API."""
-    if photo.get("local_path"):
-        local = images_dir / Path(photo["local_path"]).name
-        if local.exists():
-            return local.read_bytes()
-    req = urllib.request.Request(
-        f"{EU_IMAGE_BASE}/{photo['photo_id']}", headers={"User-Agent": USER_AGENT}
-    )
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return resp.read()
+def load_alerts_from_files(src: Path) -> list[dict]:
+    """Rebuild alert records from previously exported per-alert JSONs.
+
+    Enables a full re-export (e.g. after a model change) without the scraper
+    DB: all alert fields are carried over and embeddings are recomputed.
+    """
+    alerts = []
+    for f in sorted(src.glob("*.json"), key=lambda p: int(p.stem)):
+        a = json.loads(f.read_text())
+        a.pop("embedding_model", None)
+        a.pop("embedding_dim", None)
+        a["photos"] = [{"photo_id": p["photo_id"], "main": p["main"]} for p in a["photos"]]
+        alerts.append(a)
+    return alerts
 
 
-def encode_photo(image_bytes: bytes, processor, model) -> str:
-    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    inputs = processor(images=[image], return_tensors="pt")
-    with torch.no_grad():
-        feats = model(**inputs).pooler_output
-        feats = F.normalize(feats, p=2, dim=-1)
-    arr = feats[0].cpu().numpy().astype("<f4")
+def encode_photo(image_bytes: bytes, encoder: Encoder) -> str:
+    arr = encoder.encode([open_image(image_bytes)])[0]
     return base64.b64encode(arr.tobytes()).decode()
 
 
-def write_alert_file(out_dir: Path, alert: dict, images_dir: Path, processor, model) -> None:
+def write_alert_file(out_dir: Path, alert: dict, images_dir: Path, encoder: Encoder) -> None:
     photos = []
     for p in alert["photos"]:
         entry = {"photo_id": p["photo_id"], "main": p["main"]}
         try:
-            entry["embedding"] = encode_photo(load_image_bytes(p, images_dir), processor, model)
+            entry["embedding"] = encode_photo(load_image_bytes(p, images_dir), encoder)
         except Exception as e:
             print(f"  [warn] photo {p['photo_id']}: {e}")
         photos.append(entry)
 
     record = {k: v for k, v in alert.items() if k != "photos"}
+    record["embedding_model"] = encoder.spec_name
+    record["embedding_dim"] = encoder.spec.dim
     record["photos"] = photos
     (out_dir / f"{alert['id']}.json").write_text(json.dumps(record, ensure_ascii=False))
 
@@ -103,24 +95,28 @@ def main() -> None:
     parser.add_argument("--db", type=Path, default=DB_PATH)
     parser.add_argument("--images-dir", type=Path, default=IMAGES_DIR)
     parser.add_argument("--out", type=Path, default=OUT_DIR)
+    parser.add_argument("--spec", default=ACTIVE_SPEC, choices=sorted(MODEL_SPECS))
     parser.add_argument("--force", action="store_true", help="recompute existing alert files")
+    parser.add_argument(
+        "--from-files",
+        action="store_true",
+        help="re-export from existing per-alert JSONs instead of the scraper DB",
+    )
     args = parser.parse_args()
 
     args.out.mkdir(parents=True, exist_ok=True)
 
-    alerts = load_alerts(args.db)
+    alerts = load_alerts_from_files(args.out) if args.from_files else load_alerts(args.db)
     todo = [a for a in alerts if args.force or not (args.out / f"{a['id']}.json").exists()]
     print(f"{len(alerts)} alerts in DB, {len(todo)} to export")
     if not todo:
         return
 
-    print(f"loading model {MODEL_ID}")
-    processor = AutoImageProcessor.from_pretrained(MODEL_ID)
-    model = AutoModel.from_pretrained(MODEL_ID)
-    model.eval()
+    print(f"loading model spec {args.spec} ({MODEL_SPECS[args.spec].hf_id})")
+    encoder = Encoder(args.spec)
 
     for i, alert in enumerate(todo, 1):
-        write_alert_file(args.out, alert, args.images_dir, processor, model)
+        write_alert_file(args.out, alert, args.images_dir, encoder)
         if i % 50 == 0 or i == len(todo):
             print(f"  {i}/{len(todo)} alerts exported")
 
