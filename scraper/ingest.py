@@ -381,6 +381,71 @@ async def run(
     print(f"\nDone. Processed {total_processed} alerts.")
 
 
+async def run_id_range(
+    start: int,
+    end: int,
+    download_images: bool = True,
+    known_ids: set[int] | None = None,
+    concurrency: int = 5,
+) -> None:
+    """Sweep the contiguous notification-ID space in [start, end] and ingest
+    every valid alert.
+
+    The detail endpoint returns HTTP 404 for unallocated IDs, so enumerating
+    the ID range directly reaches *every* published alert — including the many
+    that never appear in the curated weekly web reports (``--historical``) or
+    the short ``mostRecent`` feed. IDs already present in ``known_ids`` are
+    skipped without a network request.
+    """
+    IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    init_db()
+    conn = get_conn()
+    known_ids = known_ids or set()
+
+    sem = asyncio.Semaphore(concurrency)
+    found = 0
+
+    async with httpx.AsyncClient(
+        headers=HEADERS, timeout=httpx.Timeout(60.0, connect=10.0)
+    ) as client:
+
+        async def handle(alert_id: int) -> None:
+            nonlocal found
+            async with sem:
+                detail = await fetch_detail(client, alert_id)
+            if detail is None:  # 404 / unallocated ID
+                return
+            photos = (detail.get("product") or {}).get("photos") or []
+            alert_row = extract_alert(detail)
+            with conn:
+                upsert_alert(conn, alert_row, photos)
+            found += 1
+            if download_images:
+                for photo in photos:
+                    async with sem:
+                        local_path = await download_image(client, photo["id"], photo["fileName"])
+                    if local_path:
+                        with conn:
+                            conn.execute(
+                                "UPDATE photos SET local_path=? WHERE id=?",
+                                (str(local_path), photo["id"]),
+                            )
+
+        ids = [i for i in range(start, end + 1) if i not in known_ids]
+        print(
+            f"ID sweep [{start}..{end}]: {len(ids)} IDs to probe "
+            f"({len(known_ids)} known, concurrency={concurrency})"
+        )
+        wave = 500
+        for i in range(0, len(ids), wave):
+            chunk = ids[i : i + wave]
+            await asyncio.gather(*(handle(cid) for cid in chunk))
+            print(f"  probed up to {chunk[-1]} — {found} alerts ingested so far")
+
+    conn.close()
+    print(f"\nDone. Ingested {found} alerts from ID range [{start}..{end}].")
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -419,9 +484,41 @@ if __name__ == "__main__":
         default=None,
         help="When used with --historical: restrict to a single year (e.g. --year 2024).",
     )
+    parser.add_argument(
+        "--id-range",
+        nargs=2,
+        type=int,
+        metavar=("START", "END"),
+        default=None,
+        help=(
+            "Sweep the contiguous notification-ID space [START, END] via the "
+            "detail endpoint, ingesting every valid alert. Reaches alerts that "
+            "the weekly web reports omit. Combine with --known-dir to skip "
+            "alerts already exported."
+        ),
+    )
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=5,
+        help="Concurrent requests for --id-range sweeps (default: 5).",
+    )
     args = parser.parse_args()
 
-    if args.historical:
+    if args.id_range:
+        known_ids = (
+            {int(p.stem) for p in args.known_dir.glob("*.json")} if args.known_dir else set()
+        )
+        asyncio.run(
+            run_id_range(
+                start=args.id_range[0],
+                end=args.id_range[1],
+                download_images=not args.no_images,
+                known_ids=known_ids,
+                concurrency=args.concurrency,
+            )
+        )
+    elif args.historical:
         years = [args.year] if args.year else None
         asyncio.run(
             run_historical(
