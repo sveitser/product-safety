@@ -528,6 +528,85 @@ async def test_run_all_categories(tmp_db: Path, tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Tests for ID-range sweep ingestion
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_id_range_basic(tmp_db: Path, tmp_path: Path) -> None:
+    """Sweep ingests valid IDs, skips 404s and known IDs, and downloads images."""
+    import backend.app.db as db_mod
+    from scraper import ingest
+
+    detail = {**FULL_DETAIL, "id": 42}
+
+    async def mock_get(url, **kwargs):
+        resp = MagicMock()
+        if "image" in url:
+            resp.status_code = 200
+            resp.content = b"IMG"
+            return resp
+        alert_id = int(url.rstrip("/").split("/")[-1])
+        if alert_id == 42:
+            resp.status_code = 200
+            resp.json.return_value = detail
+        else:  # 44 → unallocated ID
+            resp.status_code = 404
+        return resp
+
+    mock_client = AsyncMock()
+    mock_client.get.side_effect = mock_get
+
+    with (
+        patch("scraper.ingest.IMAGES_DIR", tmp_path),
+        patch("httpx.AsyncClient") as mock_cls,
+    ):
+        mock_cls.return_value.__aenter__.return_value = mock_client
+        # 43 is known and must be skipped without a request
+        await ingest.run_id_range(42, 44, download_images=True, known_ids={43})
+
+    # Only 42 and 44 should have been probed (43 skipped)
+    detail_urls = [str(c) for c in mock_client.get.call_args_list if "image" not in str(c)]
+    assert not any("/43" in u for u in detail_urls)
+
+    conn = db_mod.get_conn()
+    rows = conn.execute("SELECT id FROM alerts ORDER BY id").fetchall()
+    assert [r["id"] for r in rows] == [42]
+    img_files = list(tmp_path.glob("9001_*.jpg"))
+    assert len(img_files) == 1
+    conn.close()
+
+
+@pytest.mark.asyncio
+async def test_run_id_range_no_images(tmp_db: Path, tmp_path: Path) -> None:
+    """download_images=False ingests metadata without fetching image bytes."""
+    import backend.app.db as db_mod
+    from scraper import ingest
+
+    detail_resp = MagicMock()
+    detail_resp.status_code = 200
+    detail_resp.json.return_value = {**FULL_DETAIL, "id": 42}
+
+    mock_client = AsyncMock()
+    mock_client.get.return_value = detail_resp
+
+    with (
+        patch("scraper.ingest.IMAGES_DIR", tmp_path),
+        patch("httpx.AsyncClient") as mock_cls,
+    ):
+        mock_cls.return_value.__aenter__.return_value = mock_client
+        await ingest.run_id_range(42, 42, download_images=False)
+
+    # No image requests issued
+    assert not any("image" in str(c) for c in mock_client.get.call_args_list)
+
+    conn = db_mod.get_conn()
+    row = conn.execute("SELECT * FROM alerts WHERE id=42").fetchone()
+    assert row is not None
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
 # Tests for historical ingestion via webreport/all
 # ---------------------------------------------------------------------------
 
