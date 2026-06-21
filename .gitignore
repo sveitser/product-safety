@@ -3,6 +3,7 @@
 tmp/
 # build artifacts (regenerated from docs/data/alerts/ by bundle_data.py)
 /docs/data/alerts-bundle.json
+/docs/data/alerts-search.json
 /docs/data/embeddings.bin
 /docs/data/metadata.json
 __pycache__/
