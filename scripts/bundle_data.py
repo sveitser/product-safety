@@ -15,19 +15,46 @@ def read_alert_files(src: Path) -> list[dict]:
     return [json.loads(f.read_text()) for f in files]
 
 
+# Fields kept out of the initial landing-page bundle to keep first paint fast.
+# `risk_description`/`model_types` are search-only and shipped separately in
+# alerts-search.json (lazy-loaded); the rest are unused by the frontend.
+_BUNDLE_DROP = frozenset(
+    {
+        "photos",
+        "embedding_model",
+        "embedding_dim",
+        "risk_description",
+        "model_types",
+        "legal_provision",
+        "modification_date",
+        "sold_online",
+        "notification_type",
+        "measures",
+    }
+)
+# Extra search fields lazy-loaded only when the user searches.
+_SEARCH_EXTRA = ("risk_description", "model_types")
+
+
 def build_bundle(alerts: list[dict]) -> dict:
     items = []
     categories = set()
     for a in alerts:
         if a.get("product_category"):
             categories.add(a["product_category"])
-        item = {
-            k: v for k, v in a.items() if k not in ("photos", "embedding_model", "embedding_dim")
-        }
+        item = {k: v for k, v in a.items() if k not in _BUNDLE_DROP}
         item["photos"] = [{"photo_id": p["photo_id"], "main": p["main"]} for p in a["photos"]]
         items.append(item)
     items.sort(key=lambda x: x.get("publication_date") or "", reverse=True)
     return {"count": len(items), "categories": sorted(categories), "items": items}
+
+
+def build_search_index(alerts: list[dict]) -> dict:
+    """Search-only fields, keyed by id, merged into the MiniSearch index on the
+    client the first time a user searches. Keeps these (notably the bulky risk
+    descriptions) off the initial landing-page payload."""
+    items = [{"id": a["id"], **{k: a.get(k) for k in _SEARCH_EXTRA if a.get(k)}} for a in alerts]
+    return {"count": len(items), "fields": list(_SEARCH_EXTRA), "items": items}
 
 
 def embedding_version(alerts: list[dict]) -> tuple[str, int]:
@@ -95,6 +122,11 @@ def main() -> None:
     (args.out / "alerts-bundle.json").write_text(json.dumps(bundle, ensure_ascii=False))
     bundle_kb = (args.out / "alerts-bundle.json").stat().st_size // 1024
     print(f"saved alerts-bundle.json ({bundle['count']} alerts, {bundle_kb} KB)")
+
+    search_index = build_search_index(alerts)
+    (args.out / "alerts-search.json").write_text(json.dumps(search_index, ensure_ascii=False))
+    search_kb = (args.out / "alerts-search.json").stat().st_size // 1024
+    print(f"saved alerts-search.json ({search_index['count']} alerts, {search_kb} KB)")
 
     blob, meta = build_embeddings(alerts)
     (args.out / "embeddings.bin").write_bytes(blob)

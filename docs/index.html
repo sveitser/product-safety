@@ -108,7 +108,8 @@
 
     let byId = new Map();    // id -> alert
     let allByDate = [];      // all alerts, date desc
-    let ms = null;
+    let ms = null;           // MiniSearch index, built lazily
+    let indexPromise = null; // in-flight/settled index build
     let state = { q: '', category: '', page: 1 };
 
     init();
@@ -130,26 +131,72 @@
         catSelect.appendChild(opt);
       }
 
-      ms = new MiniSearch({
-        idField: 'id',
-        fields: SEARCH_FIELDS,
-        extractField: (doc, field) => {
-          const v = doc[field];
-          return Array.isArray(v) ? v.join(' ') : (v ?? '');
-        },
-        searchOptions: {
-          prefix: true,
-          fuzzy: 0.2,
-          boost: { product_name: 3, brands: 2, product_name_specific: 2 },
-        },
-      });
-      ms.addAll(allByDate);
-
       readUrl();
-      qInput.addEventListener('input', () => { state.q = qInput.value; state.page = 1; run(); });
+      qInput.addEventListener('input', onSearchInput);
       catSelect.addEventListener('change', () => { state.category = catSelect.value; state.page = 1; run(); });
-      window.addEventListener('popstate', () => { readUrl(); run(false); });
+      window.addEventListener('popstate', async () => {
+        readUrl();
+        if (state.q.trim()) await ensureIndex();
+        run(false);
+      });
+
+      // Paint the (date-sorted) results immediately — no search index needed
+      // to browse. If the URL carries a query, build the index first.
+      if (state.q.trim()) {
+        await ensureIndex();
+      } else {
+        // Warm the index during idle time so the first keystroke is instant.
+        const warm = () => ensureIndex();
+        ('requestIdleCallback' in window) ? requestIdleCallback(warm) : setTimeout(warm, 200);
+      }
       run(false);
+    }
+
+    async function onSearchInput() {
+      state.q = qInput.value;
+      state.page = 1;
+      if (state.q.trim() && !ms) {
+        metaEl.textContent = 'Searching…';
+        await ensureIndex();
+        if (qInput.value !== state.q) return; // a newer keystroke superseded this
+      }
+      run();
+    }
+
+    // Lazily fetch the search-only fields and build the MiniSearch index once.
+    function ensureIndex() {
+      if (indexPromise) return indexPromise;
+      indexPromise = (async () => {
+        const idx = new MiniSearch({
+          idField: 'id',
+          fields: SEARCH_FIELDS,
+          extractField: (doc, field) => {
+            const v = doc[field];
+            return Array.isArray(v) ? v.join(' ') : (v ?? '');
+          },
+          searchOptions: {
+            prefix: true,
+            fuzzy: 0.2,
+            boost: { product_name: 3, brands: 2, product_name_specific: 2 },
+          },
+        });
+        let extras = new Map();
+        try {
+          const res = await fetch('data/alerts-search.json');
+          if (res.ok) {
+            const data = await res.json();
+            for (const e of data.items) extras.set(e.id, e);
+          }
+        } catch { /* search still works on the display fields alone */ }
+        // Merge search-only fields into each doc, then index in one pass.
+        const docs = allByDate.map(a => {
+          const ex = extras.get(a.id);
+          return ex ? { ...a, ...ex } : a;
+        });
+        idx.addAll(docs);
+        ms = idx;
+      })();
+      return indexPromise;
     }
 
     function readUrl() {
@@ -172,10 +219,10 @@
 
     function currentResults() {
       let items;
-      if (state.q.trim()) {
+      if (state.q.trim() && ms) {
         items = ms.search(state.q).map(r => byId.get(r.id));
       } else {
-        items = allByDate; // already date desc
+        items = allByDate; // already date desc (also the fallback until the index is ready)
       }
       if (state.category) items = items.filter(a => a.product_category === state.category);
       return items;
