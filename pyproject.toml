@@ -37,4 +37,6 @@ exclude_lines = [
 python-version = "3.12"
 
 [tool.ty.src]
-exclude = ["scripts"]
+# scripts/ carry heavy optional deps (torch, pillow, httpx) and aren't type
+# checked; test_make_thumbs imports from scripts via sys.path, so exclude it too.
+exclude = ["scripts", "tests/test_make_thumbs.py"]
