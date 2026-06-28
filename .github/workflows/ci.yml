@@ -113,7 +113,8 @@ jobs:
             pytest \
             pytest-cov \
             pytest-asyncio \
-            starlette
+            starlette \
+            pillow
 
       - name: Run tests with coverage
         run: pytest --cov=backend --cov=scraper --cov-report=term-missing
