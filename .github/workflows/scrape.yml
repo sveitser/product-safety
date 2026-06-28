@@ -59,15 +59,25 @@ jobs:
           done
           [ "$ok" = 1 ]
 
+      - name: Generate search-page thumbnails
+        # Incremental + resumable: only photos without a thumbnail are fetched,
+        # and --limit bounds each run so the ~19k historical backfill spreads
+        # over several days while new alerts get thumbnails the same day.
+        run: |
+          uv run --no-project --python 3.12 \
+            --with httpx --with pillow \
+            python scripts/make_thumbs.py --limit 2000
+
       - name: Commit new alerts
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if [ -n "$(git status --porcelain docs/data/alerts)" ]; then
+          if [ -n "$(git status --porcelain docs/data/alerts docs/data/thumbs)" ]; then
             n=$(git status --porcelain docs/data/alerts | wc -l)
-            git add docs/data/alerts
-            git commit -m "chore: daily scrape — $n new/updated alert(s)"
+            t=$(git status --porcelain docs/data/thumbs | wc -l)
+            git add docs/data/alerts docs/data/thumbs
+            git commit -m "chore: daily scrape — $n new/updated alert(s), $t new thumbnail(s)"
             git push
           else
-            echo "No new alerts."
+            echo "No new alerts or thumbnails."
           fi

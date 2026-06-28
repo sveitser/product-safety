@@ -242,10 +242,12 @@
       renderPagination(totalPages);
     }
 
-    function mainPhotoUrl(a) {
+    const THUMB_BASE = 'data/thumbs';
+
+    function mainPhotoId(a) {
       if (!a.photos || !a.photos.length) return null;
       const main = a.photos.find(p => p.main) || a.photos[0];
-      return `${EU_IMAGE_BASE}/${main.photo_id}`;
+      return main.photo_id;
     }
 
     function renderCards(items) {
@@ -254,7 +256,7 @@
         return;
       }
       resultsEl.innerHTML = items.map(a => {
-        const img = mainPhotoUrl(a);
+        const pid = mainPhotoId(a);
         const name = a.product_name || a.product_name_specific || '(unnamed)';
         const date = (a.publication_date || '').slice(0, 10);
         const specific = (a.product_name_specific && a.product_name_specific !== a.product_name)
@@ -264,8 +266,15 @@
         const risks = (a.risk_types && a.risk_types.length)
           ? `<div class="risk-list">⚠ ${escHtml(a.risk_types.map(titleCase).join(' · '))}</div>` : '';
         const origin = a.country_of_origin ? ` · Origin: ${escHtml(a.country_of_origin)}` : '';
-        const imgHtml = img
-          ? `<img src="${img}" alt="${escHtml(name)}" loading="lazy" onerror="this.outerHTML='<div class=\\'no-img\\'>No image</div>'">`
+        // Self-hosted WebP thumbnail first (small + on our CDN). If it is not
+        // generated yet, fall back to the live EU full-res image; if that also
+        // fails, show the "No image" placeholder.
+        const noImg = "this.outerHTML='<div class=\\'no-img\\'>No image</div>'";
+        const onErr = pid
+          ? `this.onerror=function(){${noImg}};this.src='${EU_IMAGE_BASE}/${pid}'`
+          : '';
+        const imgHtml = pid
+          ? `<img src="${THUMB_BASE}/${pid}.webp" alt="${escHtml(name)}" loading="lazy" onerror="${onErr}">`
           : '<div class="no-img">No image</div>';
         return `
           <a class="alert-card" href="detail.html?id=${a.id}">

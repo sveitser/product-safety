@@ -42,6 +42,10 @@ eval-retrieval *args:
 bundle-data *args:
     python scripts/bundle_data.py {{args}}
 
+# Generate self-hosted WebP search-card thumbnails (incremental; needs httpx + pillow)
+make-thumbs *args:
+    python scripts/make_thumbs.py {{args}}
+
 # Serve the static frontend locally
 serve-frontend:
     python -m http.server 8080 --directory docs
