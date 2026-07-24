@@ -435,6 +435,109 @@ async def test_run_skips_unchanged_known_alert(tmp_db: Path, tmp_path: Path) -> 
 
 
 @pytest.mark.asyncio
+async def test_run_revalidates_aged_out_alert(tmp_db: Path, tmp_path: Path) -> None:
+    """An edited alert missing from the feed is refreshed by the revalidation sweep."""
+    import backend.app.db as db_mod
+    from scraper import ingest
+
+    known_dir = tmp_path / "alerts"
+    known_dir.mkdir()
+    # Alert 42 is mirrored with an older modification date and is NOT in the feed.
+    (known_dir / "42.json").write_text(
+        json.dumps({"id": 42, "modification_date": "2026-03-15T00:00:00Z"})
+    )
+
+    # Feed returns a different, already-current alert so the feed loop does nothing
+    # for 42; the sweep must reach it.
+    page_resp = {
+        "content": [],
+        "totalPages": 1,
+        "totalElements": 0,
+        "number": 0,
+        "pageSize": 100,
+    }
+    mock_page_resp = MagicMock()
+    mock_page_resp.status_code = 200
+    mock_page_resp.json.return_value = page_resp
+
+    # Detail reports a newer modificationDate than what we stored → refresh.
+    mock_detail_resp = MagicMock()
+    mock_detail_resp.status_code = 200
+    mock_detail_resp.json.return_value = FULL_DETAIL  # modificationDate 2026-03-16
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_page_resp
+    mock_client.get.return_value = mock_detail_resp
+
+    with (
+        patch("scraper.ingest.IMAGES_DIR", tmp_path),
+        patch("scraper.ingest.REQUEST_DELAY", 0),
+        patch("httpx.AsyncClient") as mock_cls,
+    ):
+        mock_cls.return_value.__aenter__.return_value = mock_client
+        await ingest.run(
+            category="ALL",
+            max_pages=1,
+            download_images=False,
+            known_dir=known_dir,
+            revalidate=10,
+        )
+
+    # 42 was re-fetched by the sweep and upserted despite never appearing in the feed.
+    assert mock_client.get.called
+    conn = db_mod.get_conn()
+    row = conn.execute("SELECT * FROM alerts WHERE id=42").fetchone()
+    assert row is not None
+    conn.close()
+
+
+@pytest.mark.asyncio
+async def test_run_revalidate_skips_unchanged(tmp_db: Path, tmp_path: Path) -> None:
+    """The revalidation sweep does not re-ingest an alert that is already current."""
+    import backend.app.db as db_mod
+    from scraper import ingest
+
+    known_dir = tmp_path / "alerts"
+    known_dir.mkdir()
+    # Stored copy is already at (or ahead of) the upstream modificationDate.
+    (known_dir / "42.json").write_text(
+        json.dumps({"id": 42, "modification_date": "2026-03-16T00:00:00Z"})
+    )
+
+    mock_page_resp = MagicMock()
+    mock_page_resp.status_code = 200
+    mock_page_resp.json.return_value = {"content": [], "totalPages": 1, "totalElements": 0}
+
+    mock_detail_resp = MagicMock()
+    mock_detail_resp.status_code = 200
+    mock_detail_resp.json.return_value = FULL_DETAIL  # modificationDate 2026-03-16
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_page_resp
+    mock_client.get.return_value = mock_detail_resp
+
+    with (
+        patch("scraper.ingest.IMAGES_DIR", tmp_path),
+        patch("scraper.ingest.REQUEST_DELAY", 0),
+        patch("httpx.AsyncClient") as mock_cls,
+    ):
+        mock_cls.return_value.__aenter__.return_value = mock_client
+        await ingest.run(
+            category="ALL",
+            max_pages=1,
+            download_images=False,
+            known_dir=known_dir,
+            revalidate=10,
+        )
+
+    # Detail was fetched to compare, but nothing was ingested (not strictly newer).
+    conn = db_mod.get_conn()
+    count = conn.execute("SELECT COUNT(*) FROM alerts").fetchone()[0]
+    assert count == 0
+    conn.close()
+
+
+@pytest.mark.asyncio
 async def test_run_skips_missing_detail(tmp_db: Path, tmp_path: Path) -> None:
     import backend.app.db as db_mod
     from scraper import ingest

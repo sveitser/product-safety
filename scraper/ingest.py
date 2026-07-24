@@ -338,6 +338,7 @@ async def run(
     max_pages: int = 999,
     download_images: bool = True,
     known_dir: Path | None = None,
+    revalidate: int = 0,
 ) -> None:
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     init_db()
@@ -352,6 +353,25 @@ async def run(
     ) as client:
         page = 0
         total_processed = 0
+        seen: set[int] = set()
+
+        async def ingest_detail(detail: dict[str, Any]) -> dict[str, Any]:
+            """Upsert one fetched detail (and its images) into the DB."""
+            photos = (detail.get("product") or {}).get("photos") or []
+            alert_row = extract_alert(detail)
+            with conn:
+                upsert_alert(conn, alert_row, photos)
+            if download_images:
+                for photo in photos:
+                    await asyncio.sleep(0.5)
+                    local_path = await download_image(client, photo["id"], photo["fileName"])
+                    if local_path:
+                        with conn:
+                            conn.execute(
+                                "UPDATE photos SET local_path=? WHERE id=?",
+                                (str(local_path), photo["id"]),
+                            )
+            return alert_row
 
         while page < max_pages:
             print(f"Fetching page {page} ({cat_label})…")
@@ -394,22 +414,8 @@ async def run(
                     print(f"  Skipping {alert_id} — no detail")
                     continue
 
-                photos = (detail.get("product") or {}).get("photos") or []
-                alert_row = extract_alert(detail)
-
-                with conn:
-                    upsert_alert(conn, alert_row, photos)
-
-                if download_images:
-                    for photo in photos:
-                        await asyncio.sleep(0.5)
-                        local_path = await download_image(client, photo["id"], photo["fileName"])
-                        if local_path:
-                            with conn:
-                                conn.execute(
-                                    "UPDATE photos SET local_path=? WHERE id=?",
-                                    (str(local_path), photo["id"]),
-                                )
+                seen.add(alert_id)
+                alert_row = await ingest_detail(detail)
 
                 total_processed += 1
                 ref = detail.get("reference", alert_id)
@@ -423,8 +429,33 @@ async def run(
             print(f"  Fetched page {page - 1}, total so far: {total_processed} alerts")
             await asyncio.sleep(REQUEST_DELAY)
 
+        # Revalidation sweep. The mostRecent feed only surfaces a bounded, recently
+        # *reported* window, so an alert that is edited upstream after it ages out of
+        # that window (Safety Gate reassigns its photo IDs on re-publish) is never
+        # re-examined by the feed loop and our mirror keeps dead image IDs. Re-fetch
+        # detail for the newest `revalidate` mirrored alerts — the ones most likely
+        # to still be edited — and refresh any whose modificationDate has advanced.
+        refreshed = 0
+        if revalidate and known_dir is not None:
+            targets = [i for i in sorted(known_ids, reverse=True)[:revalidate] if i not in seen]
+            print(f"Revalidating {len(targets)} recent mirrored alerts…")
+            for alert_id in targets:
+                await asyncio.sleep(REQUEST_DELAY)
+                detail = await fetch_detail(client, alert_id)
+                if detail is None:
+                    continue
+                if not upstream_is_newer(
+                    detail.get("modificationDate"),
+                    stored_modification_date(known_dir, alert_id),
+                ):
+                    continue
+                await ingest_detail(detail)
+                refreshed += 1
+                print(f"  refreshed {alert_id} ({detail.get('reference', alert_id)})")
+            print(f"Revalidation: refreshed {refreshed} alert(s).")
+
     conn.close()
-    print(f"\nDone. Processed {total_processed} alerts.")
+    print(f"\nDone. Processed {total_processed} alerts, refreshed {refreshed}.")
 
 
 async def run_id_range(
@@ -549,6 +580,17 @@ if __name__ == "__main__":
         default=5,
         help="Concurrent requests for --id-range sweeps (default: 5).",
     )
+    parser.add_argument(
+        "--revalidate",
+        type=int,
+        default=0,
+        help=(
+            "After the mostRecent pass, re-fetch detail for the newest N alerts in "
+            "--known-dir and refresh any whose modificationDate advanced upstream. "
+            "Catches edits (e.g. reassigned photo IDs) to alerts that have aged out "
+            "of the recent feed. Requires --known-dir. 0 (default) disables it."
+        ),
+    )
     args = parser.parse_args()
 
     if args.id_range:
@@ -580,5 +622,6 @@ if __name__ == "__main__":
                 max_pages=args.max_pages,
                 download_images=not args.no_images,
                 known_dir=args.known_dir,
+                revalidate=args.revalidate,
             )
         )

@@ -39,11 +39,16 @@ jobs:
         # and ignores any productCategory filter, so we fetch every page once and
         # let --known-dir skip alerts we already have. Category filtering happens
         # client-side in the web app, so the scraper just needs full recent coverage.
+        #
+        # --revalidate re-checks the newest 2000 mirrored alerts and refreshes any
+        # edited upstream after they aged out of the mostRecent window (Safety Gate
+        # reassigns photo IDs on re-publish, which would otherwise leave our detail
+        # pages pointing at dead image IDs).
         run: |
           uv run --no-project --python 3.12 \
             --with httpx --with alembic --with sqlalchemy \
             python scraper/ingest.py --all-categories --no-images --max-pages 6 \
-              --known-dir docs/data/alerts
+              --known-dir docs/data/alerts --revalidate 2000
 
       - name: Export new per-ID alert files
         env:
