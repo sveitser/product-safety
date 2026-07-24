@@ -318,6 +318,122 @@ async def test_run_full(tmp_db: Path, tmp_path: Path) -> None:
     conn.close()
 
 
+def test_upstream_is_newer() -> None:
+    from scraper.ingest import upstream_is_newer
+
+    # Confirmed newer (tolerates Z vs +00:00 suffixes).
+    assert upstream_is_newer("2026-07-23T07:29:27.867Z", "2026-07-22T10:32:42.444Z")
+    assert upstream_is_newer("2026-07-23T07:29:27.867+00:00", "2026-07-22T10:32:42.444Z")
+    # Same instant or older → not newer.
+    assert not upstream_is_newer("2026-07-22T10:32:42.444Z", "2026-07-22T10:32:42.444Z")
+    assert not upstream_is_newer("2026-07-21T00:00:00Z", "2026-07-22T10:32:42.444Z")
+    # Missing / unparseable → conservative False (never triggers a re-fetch).
+    assert not upstream_is_newer(None, "2026-07-22T10:32:42.444Z")
+    assert not upstream_is_newer("2026-07-23T07:29:27.867Z", None)
+    assert not upstream_is_newer("not-a-date", "2026-07-22T10:32:42.444Z")
+
+
+def test_stored_modification_date(tmp_path: Path) -> None:
+    from scraper.ingest import stored_modification_date
+
+    (tmp_path / "42.json").write_text(
+        json.dumps({"id": 42, "modification_date": "2026-03-16T00:00:00Z"})
+    )
+    assert stored_modification_date(tmp_path, 42) == "2026-03-16T00:00:00Z"
+    # Missing file → None (treated as "unknown", never blocks a refresh).
+    assert stored_modification_date(tmp_path, 999) is None
+
+
+@pytest.mark.asyncio
+async def test_run_refreshes_updated_known_alert(tmp_db: Path, tmp_path: Path) -> None:
+    """A known alert is re-fetched when upstream's modificationDate is newer."""
+    import backend.app.db as db_mod
+    from scraper import ingest
+
+    known_dir = tmp_path / "alerts"
+    known_dir.mkdir()
+    # We already mirror alert 42, but with an older modification date than upstream.
+    (known_dir / "42.json").write_text(
+        json.dumps({"id": 42, "modification_date": "2026-03-15T00:00:00Z"})
+    )
+
+    page_resp = {
+        "content": [{"id": 42, "modificationDate": "2026-03-16T00:00:00Z"}],
+        "totalPages": 1,
+        "totalElements": 1,
+        "number": 0,
+        "pageSize": 100,
+    }
+    mock_page_resp = MagicMock()
+    mock_page_resp.status_code = 200
+    mock_page_resp.json.return_value = page_resp
+
+    mock_detail_resp = MagicMock()
+    mock_detail_resp.status_code = 200
+    mock_detail_resp.json.return_value = FULL_DETAIL
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_page_resp
+    mock_client.get.return_value = mock_detail_resp
+
+    with (
+        patch("scraper.ingest.IMAGES_DIR", tmp_path),
+        patch("scraper.ingest.REQUEST_DELAY", 0),
+        patch("httpx.AsyncClient") as mock_cls,
+    ):
+        mock_cls.return_value.__aenter__.return_value = mock_client
+        await ingest.run(category="ALL", max_pages=1, download_images=False, known_dir=known_dir)
+
+    # Detail was re-fetched and the row upserted despite the alert being "known".
+    assert mock_client.get.called
+    conn = db_mod.get_conn()
+    row = conn.execute("SELECT * FROM alerts WHERE id=42").fetchone()
+    assert row is not None
+    conn.close()
+
+
+@pytest.mark.asyncio
+async def test_run_skips_unchanged_known_alert(tmp_db: Path, tmp_path: Path) -> None:
+    """A known alert with no newer modificationDate is skipped without a fetch."""
+    import backend.app.db as db_mod
+    from scraper import ingest
+
+    known_dir = tmp_path / "alerts"
+    known_dir.mkdir()
+    (known_dir / "42.json").write_text(
+        json.dumps({"id": 42, "modification_date": "2026-03-16T00:00:00Z"})
+    )
+
+    page_resp = {
+        "content": [{"id": 42, "modificationDate": "2026-03-16T00:00:00Z"}],
+        "totalPages": 1,
+        "totalElements": 1,
+        "number": 0,
+        "pageSize": 100,
+    }
+    mock_page_resp = MagicMock()
+    mock_page_resp.status_code = 200
+    mock_page_resp.json.return_value = page_resp
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_page_resp
+
+    with (
+        patch("scraper.ingest.IMAGES_DIR", tmp_path),
+        patch("scraper.ingest.REQUEST_DELAY", 0),
+        patch("httpx.AsyncClient") as mock_cls,
+    ):
+        mock_cls.return_value.__aenter__.return_value = mock_client
+        await ingest.run(category="ALL", max_pages=1, download_images=False, known_dir=known_dir)
+
+    # No detail fetch, nothing ingested.
+    mock_client.get.assert_not_called()
+    conn = db_mod.get_conn()
+    count = conn.execute("SELECT COUNT(*) FROM alerts").fetchone()[0]
+    assert count == 0
+    conn.close()
+
+
 @pytest.mark.asyncio
 async def test_run_skips_missing_detail(tmp_db: Path, tmp_path: Path) -> None:
     import backend.app.db as db_mod

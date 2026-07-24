@@ -22,6 +22,7 @@ import json
 import os
 import sqlite3
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +45,40 @@ HEADERS = {
         "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
     ),
 }
+
+
+def _parse_iso(value: str | None) -> datetime | None:
+    """Parse an ISO-8601 timestamp, tolerating both ``Z`` and ``+00:00`` suffixes."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return None
+
+
+def upstream_is_newer(feed_mod: str | None, stored_mod: str | None) -> bool:
+    """True only when the upstream copy is *confirmed* strictly newer than ours.
+
+    Used to decide whether an already-mirrored alert needs re-fetching. The check
+    is deliberately conservative: if either timestamp is missing or unparseable we
+    return ``False`` so a formatting quirk can't trigger a re-fetch of the entire
+    recent feed on every run.
+    """
+    feed_dt = _parse_iso(feed_mod)
+    stored_dt = _parse_iso(stored_mod)
+    if feed_dt is None or stored_dt is None:
+        return False
+    return feed_dt > stored_dt
+
+
+def stored_modification_date(known_dir: Path, alert_id: int) -> str | None:
+    """Read the ``modification_date`` recorded in a previously exported alert JSON."""
+    try:
+        data = json.loads((known_dir / f"{alert_id}.json").read_text())
+    except (OSError, ValueError):
+        return None
+    return data.get("modification_date")
 
 
 def extract_alert(detail: dict[str, Any]) -> dict[str, Any]:
@@ -302,12 +337,12 @@ async def run(
     category: str = "TOYS",
     max_pages: int = 999,
     download_images: bool = True,
-    known_ids: set[int] | None = None,
+    known_dir: Path | None = None,
 ) -> None:
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     init_db()
     conn = get_conn()
-    known_ids = known_ids or set()
+    known_ids = {int(p.stem) for p in known_dir.glob("*.json")} if known_dir else set()
 
     cat_label = "ALL categories" if category == "ALL" else f"category={category}"
     print(f"Starting ingestion ({cat_label}, max_pages={max_pages}, known={len(known_ids)})")
@@ -338,7 +373,18 @@ async def run(
 
             for item in content:
                 alert_id = item["id"]
-                if alert_id in known_ids:
+                # Skip alerts we already mirror — unless upstream has since updated
+                # them (new modificationDate). Safety Gate reassigns photo IDs when
+                # an alert is re-published, so a stale mirror keeps pointing at image
+                # IDs that no longer resolve; re-fetching refreshes photos and fields.
+                if (
+                    alert_id in known_ids
+                    and known_dir is not None
+                    and not upstream_is_newer(
+                        item.get("modificationDate"),
+                        stored_modification_date(known_dir, alert_id),
+                    )
+                ):
                     continue
 
                 await asyncio.sleep(REQUEST_DELAY)
@@ -528,14 +574,11 @@ if __name__ == "__main__":
         )
     else:
         category = "ALL" if args.all_categories else args.category
-        known_ids = (
-            {int(p.stem) for p in args.known_dir.glob("*.json")} if args.known_dir else set()
-        )
         asyncio.run(
             run(
                 category=category,
                 max_pages=args.max_pages,
                 download_images=not args.no_images,
-                known_ids=known_ids,
+                known_dir=args.known_dir,
             )
         )
