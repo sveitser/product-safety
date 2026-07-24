@@ -68,6 +68,24 @@ def load_alerts_from_files(src: Path) -> list[dict]:
     return alerts
 
 
+def _needs_export(alert: dict, out_dir: Path) -> bool:
+    """Whether ``alert`` must be (re-)written to ``out_dir``.
+
+    Exports a new alert, and re-exports an existing one whose upstream
+    ``modification_date`` has advanced since it was last written — that is how a
+    re-published alert (with reassigned photo IDs) gets its photos and embeddings
+    refreshed instead of keeping stale, no-longer-resolving image IDs.
+    """
+    dest = out_dir / f"{alert['id']}.json"
+    if not dest.exists():
+        return True
+    try:
+        existing = json.loads(dest.read_text())
+    except (OSError, ValueError):
+        return True
+    return alert.get("modification_date") != existing.get("modification_date")
+
+
 def encode_photo(image_bytes: bytes, encoder: Encoder) -> str:
     arr = encoder.encode([open_image(image_bytes)])[0]
     return base64.b64encode(arr.tobytes()).decode()
@@ -107,7 +125,7 @@ def main() -> None:
     args.out.mkdir(parents=True, exist_ok=True)
 
     alerts = load_alerts_from_files(args.out) if args.from_files else load_alerts(args.db)
-    todo = [a for a in alerts if args.force or not (args.out / f"{a['id']}.json").exists()]
+    todo = [a for a in alerts if args.force or _needs_export(a, args.out)]
     print(f"{len(alerts)} alerts in DB, {len(todo)} to export")
     if not todo:
         return

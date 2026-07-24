@@ -71,6 +71,7 @@
   <script type="module">
     const EU_IMAGE_BASE = 'https://ec.europa.eu/safety-gate-alerts/public/api/notification/image';
     const EU_DETAIL_BASE = 'https://ec.europa.eu/safety-gate-alerts/screen/webReport/alertDetail';
+    const THUMB_BASE = 'data/thumbs';
     const content = document.getElementById('content');
 
     init();
@@ -96,9 +97,16 @@
       const photos = (a.photos || []).slice()
         .sort((p1, p2) => (p2.main === true) - (p1.main === true));
       const photosHtml = photos.length
-        ? photos.map(p =>
-            `<img class="${p.main ? '' : 'secondary'}" src="${EU_IMAGE_BASE}/${p.photo_id}" alt="Product photo" loading="lazy" onerror="this.style.display='none'">`
-          ).join('')
+        ? photos.map(p => {
+            // Load the full-res image live from the EU origin. That origin is slow
+            // and load-sheds, and — when an alert is updated upstream — its photo
+            // IDs get reassigned, leaving our stored IDs pointing at empty images.
+            // So on error, fall back to our self-hosted WebP thumbnail (served from
+            // our CDN); only hide the image if that is missing too.
+            const hide = "this.style.display='none'";
+            const onErr = `this.onerror=function(){${hide}};this.src='${THUMB_BASE}/${p.photo_id}.webp'`;
+            return `<img class="${p.main ? '' : 'secondary'}" src="${EU_IMAGE_BASE}/${p.photo_id}" alt="Product photo" loading="lazy" onerror="${onErr}">`;
+          }).join('')
         : '<div class="no-img">No image</div>';
 
       const subtitle = (a.product_name_specific && a.product_name_specific !== a.product_name)
